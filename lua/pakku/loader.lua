@@ -10,6 +10,19 @@ local group = vim.api.nvim_create_augroup("pakku.loader", { clear = true })
 local function warn(fmt, ...) vim.notify(("pakku: " .. fmt):format(...), vim.log.levels.WARN) end
 local function err(fmt, ...)  vim.notify(("pakku: " .. fmt):format(...), vim.log.levels.ERROR) end
 
+-- Candidate require() names, in order of preference. Naming convention
+-- is inconsistent: nvim-surround keeps prefix, nvim-lspconfig strips it,
+-- nvim-web-devicons keeps prefix. We try a few until one yields setup().
+local function modname_candidates(spec)
+  local list, seen = {}, {}
+  local function add(s) if s and s ~= "" and not seen[s] then seen[s] = true; table.insert(list, s) end end
+  add(spec.modname)                                  -- inferred (suffix+prefix stripped)
+  add(spec.name)                                     -- raw name as-is (nvim-surround style)
+  add((spec.name:gsub("%.nvim$", "")):gsub("%-nvim$", ""))  -- only suffix stripped
+  add((spec.name:gsub("^nvim%-", "")))                       -- only prefix stripped
+  return list
+end
+
 local function apply_config(spec)
   if spec.config then
     local ok, e = pcall(spec.config)
@@ -17,10 +30,16 @@ local function apply_config(spec)
     return
   end
   if spec.opts == nil then return end
-  local ok_mod, mod = pcall(require, spec.modname)
-  if not ok_mod then return warn("require('%s') failed for %s", spec.modname, spec.name) end
-  if type(mod.setup) ~= "function" then
-    return warn("%s has no setup(); pass `config` instead of `opts`", spec.modname)
+  local mod, tried
+  for _, n in ipairs(modname_candidates(spec)) do
+    tried = (tried and tried .. ", " or "") .. n
+    local ok, m = pcall(require, n)
+    if ok and type(m) == "table" and type(m.setup) == "function" then
+      mod = m; break
+    end
+  end
+  if not mod then
+    return warn("no setup() for %s (tried: %s)", spec.name, tried or "?")
   end
   local ok, e = pcall(mod.setup, spec.opts)
   if not ok then err("%s setup error: %s", spec.name, e) end
