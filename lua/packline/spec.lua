@@ -52,7 +52,10 @@ function M.normalize(specs)
     if type(raw) == "string" then raw = { src = raw } end
     assert(raw.src, "packline: spec missing `src`")
     local name = infer_name(raw.src, raw.name)
-    if seen[name] then return end
+    if seen[name] then
+      vim.notify(("packline: duplicate spec for %s, keeping first"):format(name), vim.log.levels.WARN)
+      return
+    end
     seen[name] = true
 
     if raw.dependencies then

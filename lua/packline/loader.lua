@@ -1,8 +1,8 @@
 -- lazy-load triggers + opts/config dispatch
 local M = {}
 
-M.pending = {}  -- name -> lazy_spec
-M.active = {}   -- name -> true
+M.pending = {}  -- name -> lazy_spec (awaiting trigger)
+M.active = {}   -- name -> true (loaded + configured)
 M.by_name = {}  -- name -> lazy_spec (all specs, for build hook lookup)
 
 local group = vim.api.nvim_create_augroup("packline.loader", { clear = true })
@@ -23,6 +23,17 @@ local function call_setup(spec)
   end
 end
 
+local function apply_config(spec)
+  if spec.config then
+    local ok, err = pcall(spec.config)
+    if not ok then
+      vim.notify(("packline: %s config error: %s"):format(spec.name, err), vim.log.levels.ERROR)
+    end
+  elseif spec.opts ~= nil then
+    call_setup(spec)
+  end
+end
+
 function M.load(name)
   if M.active[name] then return end
   local spec = M.pending[name]
@@ -36,27 +47,13 @@ function M.load(name)
     return
   end
 
-  if spec.config then
-    local cok, cerr = pcall(spec.config)
-    if not cok then
-      vim.notify(("packline: %s config error: %s"):format(name, cerr), vim.log.levels.ERROR)
-    end
-  elseif spec.opts ~= nil then
-    call_setup(spec)
-  end
+  apply_config(spec)
 end
 
--- For eager (non-lazy) specs that already loaded via vim.pack.
-function M.run_eager_config(spec)
+-- Mark eager spec active (vim.pack already loaded it) and run config.
+function M.apply(spec)
   M.active[spec.name] = true
-  if spec.config then
-    local ok, err = pcall(spec.config)
-    if not ok then
-      vim.notify(("packline: %s config error: %s"):format(spec.name, err), vim.log.levels.ERROR)
-    end
-  elseif spec.opts ~= nil then
-    call_setup(spec)
-  end
+  apply_config(spec)
 end
 
 local function as_list(v)
@@ -93,12 +90,14 @@ function M.register(spec)
       vim.api.nvim_create_user_command(cmd_name, function(args)
         pcall(vim.api.nvim_del_user_command, cmd_name)
         M.load(name)
-        local prefix = ""
-        if args.bang then prefix = "!" end
+        local prefix = args.bang and "!" or ""
+        local body = args.args or ""
         if args.range == 2 then
-          vim.cmd(string.format("%d,%d%s%s %s", args.line1, args.line2, cmd_name, prefix, args.args))
+          vim.cmd(string.format("%d,%d%s%s %s", args.line1, args.line2, cmd_name, prefix, body))
+        elseif args.range == 1 then
+          vim.cmd(string.format("%d%s%s %s", args.line1, cmd_name, prefix, body))
         else
-          vim.cmd(string.format("%s%s %s", cmd_name, prefix, args.args))
+          vim.cmd(string.format("%s%s %s", cmd_name, prefix, body))
         end
       end, { nargs = "*", range = true, bang = true, complete = "file" })
     end

@@ -1,4 +1,4 @@
--- aegis-cli subprocess wrapper.
+-- aegis-cli subprocess wrapper, async.
 -- aegis cannot AST-scan Lua. We use it for:
 --   1. `aegis actions scan <path>` -> finds malicious GH Actions workflows shipped in plugin repos
 --   2. `aegis sbom --local <path>` -> CycloneDX inventory for plugins that ship manifest-bearing deps
@@ -24,25 +24,27 @@ local function notify_findings(name, label, res)
   vim.notify(msg, lvl)
 end
 
+local function run_async(cmd, name, label)
+  vim.system(cmd, { text = true }, function(res)
+    vim.schedule(function() notify_findings(name, label, res) end)
+  end)
+end
+
 local function run_actions(bin, path, name, fail_on)
   local cmd = { bin, "actions", "scan", path, "--json" }
   if fail_on then table.insert(cmd, "--fail-on"); table.insert(cmd, fail_on) end
-  local res = vim.system(cmd, { text = true }):wait()
-  notify_findings(name, "actions", res)
-  return res
+  run_async(cmd, name, "actions")
 end
 
 local function run_sbom(bin, path, name, report_dir)
   ensure_dir(report_dir)
   local out = vim.fs.joinpath(report_dir, name .. ".cdx.json")
-  local res = vim.system({
+  run_async({
     bin, "sbom", "--local", path, "--format", "cyclonedx", "--output", out,
-  }, { text = true }):wait()
-  notify_findings(name, "sbom", res)
-  return res, out
+  }, name, "sbom")
 end
 
--- Scan a single plugin.
+-- Scan a single plugin (async, fire-and-forget).
 function M.scan_one(plugin, opts)
   opts = opts or {}
   local bin = opts.bin or "aegis"
@@ -59,7 +61,7 @@ function M.scan_one(plugin, opts)
   end
 end
 
--- Scan all installed plugins. Async-ish: launches sequentially via vim.system().
+-- Scan all installed plugins concurrently.
 function M.scan_all(opts)
   opts = opts or {}
   local ok, plugins = pcall(vim.pack.get)

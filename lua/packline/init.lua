@@ -22,7 +22,6 @@ local defaults = {
 
 local state = {
   config = vim.deepcopy(defaults),
-  attached = false,
 }
 
 local function ensure_pack()
@@ -47,10 +46,8 @@ function M.setup(opts)
   if state.config.scanner.report_dir == nil then
     state.config.scanner.report_dir = vim.fs.joinpath(vim.fn.stdpath("state"), "packline", "scans")
   end
-  if not state.attached then
-    Build.attach(state.config)
-    state.attached = true
-  end
+  -- Build.attach uses an augroup with clear=true, so calling repeatedly is safe.
+  Build.attach(state.config)
 
   vim.api.nvim_create_user_command("Packline", function(args)
     local sub = args.fargs[1]
@@ -84,31 +81,30 @@ function M.add(specs)
   ensure_pack()
   local normalized = Spec.normalize(specs)
 
-  local eager, lazy = {}, {}
+  -- Single registration path: every spec lands in Loader.by_name; lazy ones also get triggers.
+  for _, entry in ipairs(normalized) do
+    Loader.register(entry.lazy)
+  end
+
+  local eager_pack, lazy_pack, eager_specs = {}, {}, {}
   for _, entry in ipairs(normalized) do
     if entry.lazy.is_lazy then
-      table.insert(lazy, entry)
+      table.insert(lazy_pack, entry.pack)
     else
-      table.insert(eager, entry)
+      table.insert(eager_pack, entry.pack)
+      table.insert(eager_specs, entry.lazy)
     end
   end
 
-  for _, entry in ipairs(lazy) do Loader.register(entry.lazy) end
-  for _, entry in ipairs(eager) do
-    Loader.by_name[entry.lazy.name] = entry.lazy
-  end
-
-  local eager_pack = vim.tbl_map(function(e) return e.pack end, eager)
   if #eager_pack > 0 then
     vim.pack.add(eager_pack, { load = true, confirm = state.config.confirm_update })
   end
-  local lazy_pack = vim.tbl_map(function(e) return e.pack end, lazy)
   if #lazy_pack > 0 then
     vim.pack.add(lazy_pack, { load = false, confirm = state.config.confirm_update })
   end
 
-  for _, entry in ipairs(eager) do
-    Loader.run_eager_config(entry.lazy)
+  for _, spec in ipairs(eager_specs) do
+    Loader.apply(spec)
   end
 end
 
