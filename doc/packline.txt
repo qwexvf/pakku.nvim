@@ -1,0 +1,93 @@
+*packline.txt*  Thin DX layer over vim.pack
+
+==============================================================================
+CONTENTS                                                  *packline-contents*
+
+  1. Overview ................................. |packline-overview|
+  2. Requirements ............................. |packline-requirements|
+  3. Setup .................................... |packline-setup|
+  4. Spec format .............................. |packline-spec|
+  5. Commands ................................. |packline-commands|
+  6. Scanner .................................. |packline-scanner|
+  7. Health ................................... |packline-health|
+
+==============================================================================
+1. OVERVIEW                                               *packline-overview*
+
+packline.nvim wraps |vim.pack| with four ergonomics:
+
+  - lazy-load triggers (event/ft/cmd)
+  - build hooks driven by |PackChanged|
+  - dependency ordering via `dependencies = { ... }`
+  - `opts → require(modname).setup(opts)` sugar
+
+Plus optional supply-chain scanning via aegis-cli.
+
+|vim.pack| keeps owning installs, updates, and the lockfile.
+
+==============================================================================
+2. REQUIREMENTS                                       *packline-requirements*
+
+  - Neovim 0.12+
+  - aegis-cli on PATH (optional, for scanning)
+
+==============================================================================
+3. SETUP                                                     *packline-setup*
+
+>lua
+    require("packline").setup({
+      scanner = {
+        enabled = true,
+        bin = "aegis",
+        on = { "install", "update" },
+        actions = true,
+        sbom = true,
+        fail_on = "block",
+      },
+    })
+
+    require("packline").add({
+      { src = "https://github.com/folke/lazydev.nvim", ft = "lua", opts = {} },
+    })
+<
+
+==============================================================================
+4. SPEC FORMAT                                                *packline-spec*
+
+  src           string, required, git URL
+  name          string, defaults to repo basename
+  version       string | vim.version.range(…)
+  modname       string, module name passed to require()
+  opts          table, passed to require(modname).setup(opts)
+  config        function, called instead of opts
+  build         string | function
+                  ":TSUpdate"  -> ex-cmd
+                  "make"       -> shell via sh -c
+                  fn(ctx)      -> ctx = { path, spec }
+  event         string | string[], lazy-load on autocmd
+  ft            string | string[], lazy-load on FileType
+  cmd           string | string[], lazy-load on user command
+  dependencies  spec[], installed and loaded before this plugin
+
+==============================================================================
+5. COMMANDS                                              *packline-commands*
+
+  :Packline status              Active vs pending plugins.
+  :Packline update [name]       Forward to vim.pack.update.
+  :Packline clean <name>        Forward to vim.pack.del.
+  :Packline scan [name]         Run aegis-cli on one or all plugins.
+
+==============================================================================
+6. SCANNER                                                *packline-scanner*
+
+Scanner runs aegis-cli over each plugin path. aegis does NOT AST-scan Lua;
+it covers GitHub Actions workflows and manifest-bearing transitive deps.
+Pure-Lua plugins produce empty SBOMs. Review Lua source yourself.
+
+==============================================================================
+7. HEALTH                                                  *packline-health*
+
+`:checkhealth packline` reports Neovim version, vim.pack presence, lockfile
+location, aegis availability, and report directory.
+
+ vim:tw=78:ts=8:ft=help:norl:
