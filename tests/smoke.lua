@@ -75,6 +75,7 @@ vim.pack.get = function()
     },
   }
 end
+Loader.active.alpha = true -- so it lands in the "Loaded" section
 UI.open()
 local ubuf
 for _, b in ipairs(vim.api.nvim_list_bufs()) do
@@ -91,6 +92,14 @@ UI.close()
 -- scanner module surface
 local Scanner = require("pakku.scanner")
 assert(type(Scanner.scan_one) == "function" and type(Scanner.scan_all) == "function")
+assert(type(Scanner.scan_sync) == "function")
+
+-- scan_sync graceful when aegis missing
+local r = Scanner.scan_sync(
+  { name = "x", path = "/nonexistent", rev = "deadbeef" },
+  { bin = "/no/such/bin" }
+)
+assert(r == nil, "scan_sync should return nil when bin missing")
 
 print("OK: all smoke tests passed")
 vim.cmd("qa!")

@@ -112,4 +112,48 @@ function M.scan_all(opts)
   end
 end
 
+-- Synchronous capability scan for use in the install gate (init.lua M.add).
+-- Caches by (name, rev) so re-running pakku.add on every nvim launch only
+-- pays the aegis cost when the commit SHA changes. Returns a table with:
+--   { verdict, risk_score, capabilities, evidence, cached (bool) }
+-- or nil if aegis is missing / produced no usable output.
+function M.scan_sync(plugin, opts)
+  opts = opts or {}
+  local bin = opts.bin or "aegis"
+  if vim.fn.executable(bin) ~= 1 then return nil end
+
+  local report_dir = opts.report_dir or vim.fs.joinpath(vim.fn.stdpath("state"), "pakku", "scans")
+  local rev = (plugin.rev or "unknown"):sub(1, 8)
+  local cache_path = vim.fs.joinpath(report_dir, ("%s-%s.cache.json"):format(plugin.name, rev))
+
+  -- Cache hit: read + decode + return.
+  local fr = io.open(cache_path, "r")
+  if fr then
+    local body = fr:read("*a")
+    fr:close()
+    local ok, data = pcall(vim.json.decode, body)
+    if ok and type(data) == "table" then
+      data.cached = true
+      return data
+    end
+  end
+
+  -- Cache miss: run aegis synchronously.
+  local cmd = { bin, "analyze", "--ecosystem", "neovim", plugin.path, "--json" }
+  if opts.evidence then table.insert(cmd, "--evidence") end
+  local res = vim.system(cmd, { text = true }):wait()
+  if res.code > 1 then return nil end
+  local ok, data = pcall(vim.json.decode, res.stdout or "")
+  if not ok or type(data) ~= "table" then return nil end
+
+  vim.fn.mkdir(report_dir, "p")
+  local fw = io.open(cache_path, "w")
+  if fw then
+    fw:write(res.stdout)
+    fw:close()
+  end
+  data.cached = false
+  return data
+end
+
 return M

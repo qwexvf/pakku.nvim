@@ -218,6 +218,26 @@ scanner = {
 `:Pakku scan` runs the configured scanners over every installed plugin.
 `:Pakku scan <name>` targets one.
 
+### Pre-activation gate
+
+`scanner.gate` controls whether plugins that fail the synchronous capability
+scan are blocked from `:packadd` (§2.1 of the safety spec).
+
+| Mode      | Behavior                                                            |
+|-----------|---------------------------------------------------------------------|
+| `"off"`   | No gate. Plugins load regardless of verdict.                        |
+| `"block"` (default) | Refuse load when verdict is `block`. Allow `prompt`/`review`/`safe` (`prompt` emits WARN). |
+| `"prompt"`| Refuse load when verdict is `block` OR `prompt`. Stricter.          |
+
+The gate scan is cached by `(plugin_name, commit_sha)` at
+`stdpath('state')/pakku/scans/<name>-<rev>.cache.json`. Subsequent nvim
+launches reuse the cached verdict — the synchronous aegis call only runs
+when a plugin's pinned SHA changes.
+
+When aegis is missing, the gate **fails open** (notifies WARN, plugins load).
+Set `scanner.bin = "/required/path/to/aegis"` to harden if you'd rather fail
+closed.
+
 ## Lockfile
 
 pakku does not write a lockfile. `vim.pack` writes

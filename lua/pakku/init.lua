@@ -25,6 +25,13 @@ local defaults = {
     evidence = false, -- include --evidence flag (file:line snippets in JSON)
     fail_on = nil, -- aegis --fail-on for actions: safe|review|prompt|block
     report_dir = nil,
+    -- Pre-activation gate (§2.1 of safety spec). Synchronous scan before
+    -- :packadd. Verdicts handled:
+    --   "off"    — no gate, plugin loads regardless of verdict
+    --   "block"  — refuse load when verdict == "block"
+    --   "prompt" — refuse load when verdict == "block" OR "prompt"
+    -- Cached by (name, rev) under report_dir/<name>-<rev>.cache.json.
+    gate = "block",
   },
   confirm_update = true,
 }
@@ -100,30 +107,96 @@ function M.setup(opts)
   })
 end
 
+-- Apply the pre-activation scan gate. Returns the subset of entries that
+-- passed the configured verdict threshold. Plugins that fail the gate get
+-- removed from the loader registry and not :packadd'd. No-op when scanner
+-- is disabled or gate is "off". See safety spec §2.1.
+local function gate_entries(entries, scanner_cfg)
+  if not scanner_cfg.enabled or scanner_cfg.gate == "off" then return entries end
+  if vim.fn.executable(scanner_cfg.bin or "aegis") ~= 1 then return entries end
+
+  local strict = scanner_cfg.gate == "prompt"
+  local kept = {}
+  for _, e in ipairs(entries) do
+    local p = (vim.pack.get({ e.pack.name }))[1]
+    if not p then
+      table.insert(kept, e) -- install incomplete; let downstream handle
+    else
+      local result =
+        Scanner.scan_sync({ name = e.pack.name, path = p.path, rev = p.rev }, scanner_cfg)
+      if not result then
+        table.insert(kept, e) -- aegis missing / failed; fail-open
+      else
+        local v = result.verdict or "?"
+        local blocked = (v == "block") or (strict and v == "prompt")
+        if blocked then
+          vim.notify(
+            ("pakku: BLOCKED %s — verdict=%s risk=%d caps=[%s]%s"):format(
+              e.pack.name,
+              v,
+              result.risk_score or 0,
+              table.concat(result.capabilities or {}, ", "),
+              result.cached and " (cached)" or ""
+            ),
+            vim.log.levels.ERROR
+          )
+          Loader.pending[e.pack.name] = nil
+          Loader.by_name[e.pack.name] = nil
+        else
+          table.insert(kept, e)
+          if v == "prompt" then
+            vim.notify(
+              ("pakku: %s verdict=prompt risk=%d caps=[%s] (allowed by gate=block)"):format(
+                e.pack.name,
+                result.risk_score or 0,
+                table.concat(result.capabilities or {}, ", ")
+              ),
+              vim.log.levels.WARN
+            )
+          end
+        end
+      end
+    end
+  end
+  return kept
+end
+
 function M.add(specs)
   ensure_pack()
   local entries = Policy.filter(Spec.normalize(specs), state.config.security)
   if #entries == 0 then return end
 
+  -- Register everything in the loader first; the gate may unregister rejects.
   for _, e in ipairs(entries) do
     Loader.register(e.lazy)
   end
 
-  local eager, lazy_pack = {}, {}
-  for _, e in ipairs(entries) do
-    table.insert(e.lazy.is_lazy and lazy_pack or eager, e.lazy.is_lazy and e.pack or e)
-  end
-
-  -- Higher priority eager loads first (lazy.nvim parity). Default 50.
-  table.sort(eager, function(a, b) return (a.lazy.priority or 50) > (b.lazy.priority or 50) end)
-
-  local eager_pack = vim.tbl_map(function(e) return e.pack end, eager)
+  -- Install all entries to disk without auto-loading. vim.pack.add with
+  -- load=false clones + writes lockfile but does NOT :packadd. This lets the
+  -- scan gate inspect the on-disk source before activation.
+  local all_pack = vim.tbl_map(function(e) return e.pack end, entries)
   local confirm = state.config.confirm_update
-  if #eager_pack > 0 then vim.pack.add(eager_pack, { load = true, confirm = confirm }) end
-  if #lazy_pack > 0 then vim.pack.add(lazy_pack, { load = false, confirm = confirm }) end
-  for _, e in ipairs(eager) do
-    Loader.apply(e.lazy)
+  vim.pack.add(all_pack, { load = false, confirm = confirm })
+
+  -- Pre-activation gate (§2.1). Synchronous, cached by (name, rev).
+  entries = gate_entries(entries, state.config.scanner)
+  if #entries == 0 then return end
+
+  -- Eager: priority sort, then :packadd + apply config. Survivors only.
+  local eager = {}
+  for _, e in ipairs(entries) do
+    if not e.lazy.is_lazy then table.insert(eager, e) end
   end
+  table.sort(eager, function(a, b) return (a.lazy.priority or 50) > (b.lazy.priority or 50) end)
+  for _, e in ipairs(eager) do
+    local ok, err = pcall(vim.cmd, "packadd " .. e.lazy.name)
+    if not ok then
+      vim.notify(("pakku: packadd %s failed: %s"):format(e.lazy.name, err), vim.log.levels.ERROR)
+    else
+      Loader.apply(e.lazy)
+    end
+  end
+  -- Lazy survivors stay in Loader.pending; triggers will :packadd them later.
 end
 
 function M.update(names)
