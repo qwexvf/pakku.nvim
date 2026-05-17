@@ -1,159 +1,103 @@
--- pakku: thin DX layer over vim.pack
--- Public API: setup, add, update, scan, status, clean
+-- pakku: thin DX layer over vim.pack.
+-- Public API: setup, add, update, review, scan, clean, status.
 local M = {}
 
-local Spec = require("pakku.spec")
-local Loader = require("pakku.loader")
-local Build = require("pakku.build")
+local Spec    = require("pakku.spec")
+local Loader  = require("pakku.loader")
+local Build   = require("pakku.build")
 local Scanner = require("pakku.scanner")
-local Policy = require("pakku.policy")
+local Policy  = require("pakku.policy")
 
 local defaults = {
-  performance = {
-    loader = true,  -- vim.loader.enable() bytecode cache
-  },
+  performance = { loader = true },
   security = {
-    allowlist = {   -- empty = allow any host
-      "github.com", "codeberg.org", "gitlab.com", "git.sr.ht",
-    },
-    require_https = true,        -- reject git:// and http:// schemes
-    require_pinned_version = false,  -- warn (not block) when version=nil
+    allowlist = { "github.com", "codeberg.org", "gitlab.com", "git.sr.ht" },
+    require_https = true,
+    require_pinned_version = false,
   },
   scanner = {
-    enabled = false,  -- opt-in: requires aegis on PATH
-    bin = "aegis",
+    enabled = false, bin = "aegis",
     on = { "install", "update" },
-    actions = true,
-    sbom = true,
-    fail_on = nil,    -- aegis --fail-on: safe|review|prompt|block
-    report_dir = nil, -- defaults to stdpath('state')/pakku/scans
+    actions = true, sbom = true,
+    fail_on = nil, report_dir = nil,
   },
-  confirm_update = true,  -- forward to vim.pack.update
+  confirm_update = true,
 }
 
-local state = {
-  config = vim.deepcopy(defaults),
-}
+local state = { config = vim.deepcopy(defaults) }
 
 local function ensure_pack()
-  if not vim.pack then
-    error("pakku: vim.pack missing — requires Neovim 0.12+")
-  end
+  if not vim.pack then error("pakku: vim.pack missing — requires Neovim 0.12+") end
 end
 
 local function merge(into, from)
   for k, v in pairs(from or {}) do
-    if type(v) == "table" and type(into[k]) == "table" then
-      merge(into[k], v)
-    else
-      into[k] = v
-    end
+    if type(v) == "table" and type(into[k]) == "table" then merge(into[k], v) else into[k] = v end
   end
 end
+
+local SUBS = { "ui", "status", "scan", "update", "review", "clean" }
 
 function M.setup(opts)
   ensure_pack()
   merge(state.config, opts or {})
-  if state.config.scanner.report_dir == nil then
-    state.config.scanner.report_dir = vim.fs.joinpath(vim.fn.stdpath("state"), "pakku", "scans")
-  end
-  -- vim.loader caches compiled Lua bytecode; ~10-30ms cold start win per plugin.
+  state.config.scanner.report_dir = state.config.scanner.report_dir
+    or vim.fs.joinpath(vim.fn.stdpath("state"), "pakku", "scans")
   if state.config.performance.loader and vim.loader and not vim.loader.enabled then
     pcall(vim.loader.enable)
   end
-  -- Build.attach uses an augroup with clear=true, so calling repeatedly is safe.
   Build.attach(state.config)
 
-  -- Fire `User VeryLazy` after startup so specs with `event = "VeryLazy"`
-  -- (lazy.nvim convention) load post-init. Idempotent: augroup is cleared.
+  -- Fire `User VeryLazy` after startup for lazy.nvim-style specs.
   local g = vim.api.nvim_create_augroup("pakku.verylazy", { clear = true })
-  local function fire_verylazy()
-    vim.api.nvim_exec_autocmds("User", { pattern = "VeryLazy", modeline = false })
-  end
+  local function fire() vim.api.nvim_exec_autocmds("User", { pattern = "VeryLazy", modeline = false }) end
   if vim.v.vim_did_enter == 1 then
-    vim.schedule(fire_verylazy)
+    vim.schedule(fire)
   else
-    vim.api.nvim_create_autocmd("VimEnter", {
-      group = g, once = true,
-      callback = function() vim.schedule(fire_verylazy) end,
-    })
+    vim.api.nvim_create_autocmd("VimEnter", { group = g, once = true, callback = function() vim.schedule(fire) end })
   end
 
   vim.api.nvim_create_user_command("Pakku", function(args)
-    local sub = args.fargs[1]
-    local rest = vim.list_slice(args.fargs, 2)
-    if sub == nil or sub == "ui" then
-      require("pakku.ui").open()
-    elseif sub == "status" then
-      M.status()
-    elseif sub == "scan" then
-      M.scan(rest[1])
-    elseif sub == "update" then
-      M.update(rest)
-    elseif sub == "review" then
-      M.review(rest)
-    elseif sub == "clean" then
-      M.clean(rest)
-    else
-      vim.notify("pakku: unknown subcommand " .. sub, vim.log.levels.ERROR)
-    end
+    local sub, rest = args.fargs[1], vim.list_slice(args.fargs, 2)
+    if sub == nil or sub == "ui" then require("pakku.ui").open()
+    elseif sub == "status" then M.status()
+    elseif sub == "scan"   then M.scan(rest[1])
+    elseif sub == "update" then M.update(rest)
+    elseif sub == "review" then M.review(rest)
+    elseif sub == "clean"  then M.clean(rest)
+    else vim.notify("pakku: unknown subcommand " .. sub, vim.log.levels.ERROR) end
   end, {
     nargs = "*",
     complete = function(arglead, line)
-      local subs = { "ui", "status", "scan", "update", "review", "clean" }
-      if line:match("^Pakku%s+%S*$") then
-        return vim.tbl_filter(function(s) return s:find(arglead, 1, true) == 1 end, subs)
+      local pool = SUBS
+      if not line:match("^Pakku%s+%S*$") then
+        pool = vim.tbl_keys(Loader.by_name)
       end
-      local names = {}
-      for n in pairs(Loader.by_name) do table.insert(names, n) end
-      return vim.tbl_filter(function(s) return s:find(arglead, 1, true) == 1 end, names)
+      return vim.tbl_filter(function(s) return s:find(arglead, 1, true) == 1 end, pool)
     end,
   })
 end
 
 function M.add(specs)
   ensure_pack()
-  local normalized = Spec.normalize(specs)
-  normalized = Policy.filter(normalized, state.config.security)
-  if #normalized == 0 then return end
+  local entries = Policy.filter(Spec.normalize(specs), state.config.security)
+  if #entries == 0 then return end
 
-  -- Single registration path: every spec lands in Loader.by_name; lazy ones also get triggers.
-  for _, entry in ipairs(normalized) do
-    Loader.register(entry.lazy)
+  for _, e in ipairs(entries) do Loader.register(e.lazy) end
+
+  local eager, lazy_pack = {}, {}
+  for _, e in ipairs(entries) do
+    table.insert(e.lazy.is_lazy and lazy_pack or eager, e.lazy.is_lazy and e.pack or e)
   end
 
-  local eager_entries, lazy_pack = {}, {}
-  for _, entry in ipairs(normalized) do
-    if entry.lazy.is_lazy then
-      table.insert(lazy_pack, entry.pack)
-    else
-      table.insert(eager_entries, entry)
-    end
-  end
+  -- Higher priority eager loads first (lazy.nvim parity). Default 50.
+  table.sort(eager, function(a, b) return (a.lazy.priority or 50) > (b.lazy.priority or 50) end)
 
-  -- Higher priority loads first (lazy.nvim parity). Default 50. Stable on ties.
-  table.sort(eager_entries, function(a, b)
-    local pa = a.lazy.priority or 50
-    local pb = b.lazy.priority or 50
-    return pa > pb
-  end)
-
-  local eager_pack, eager_specs = {}, {}
-  for _, entry in ipairs(eager_entries) do
-    table.insert(eager_pack, entry.pack)
-    table.insert(eager_specs, entry.lazy)
-  end
-
-  if #eager_pack > 0 then
-    vim.pack.add(eager_pack, { load = true, confirm = state.config.confirm_update })
-  end
-  if #lazy_pack > 0 then
-    vim.pack.add(lazy_pack, { load = false, confirm = state.config.confirm_update })
-  end
-
-  for _, spec in ipairs(eager_specs) do
-    Loader.apply(spec)
-  end
+  local eager_pack = vim.tbl_map(function(e) return e.pack end, eager)
+  local confirm = state.config.confirm_update
+  if #eager_pack > 0 then vim.pack.add(eager_pack, { load = true,  confirm = confirm }) end
+  if #lazy_pack  > 0 then vim.pack.add(lazy_pack,  { load = false, confirm = confirm }) end
+  for _, e in ipairs(eager) do Loader.apply(e.lazy) end
 end
 
 function M.update(names)
@@ -171,20 +115,15 @@ end
 function M.clean(names)
   ensure_pack()
   if not names or #names == 0 then
-    vim.notify("pakku: clean requires plugin names", vim.log.levels.WARN)
-    return
+    return vim.notify("pakku: clean requires plugin names", vim.log.levels.WARN)
   end
   vim.pack.del(names)
 end
 
 function M.scan(name)
   if name then
-    local plugins = vim.pack.get({ name })
-    if #plugins == 0 then
-      vim.notify("pakku: no installed plugin named " .. name, vim.log.levels.WARN)
-      return
-    end
-    local p = plugins[1]
+    local p = (vim.pack.get({ name }))[1]
+    if not p then return vim.notify("pakku: no installed plugin named " .. name, vim.log.levels.WARN) end
     Scanner.scan_one({ name = p.spec.name, path = p.path }, state.config.scanner)
   else
     Scanner.scan_all(state.config.scanner)
@@ -196,15 +135,12 @@ function M.status()
   local plugins = vim.pack.get()
   table.sort(plugins, function(a, b) return a.spec.name < b.spec.name end)
   for _, p in ipairs(plugins) do
-    local name = p.spec.name
-    local mark
-    if Loader.active[name] then mark = "[active]"
-    elseif Loader.pending[name] then mark = "[pending]"
-    else mark = "[unmanaged]" end
-    table.insert(lines, string.format("  %s %s  (%s)", mark, name, p.rev or "?"))
+    local n = p.spec.name
+    local mark = Loader.active[n] and "[active]" or Loader.pending[n] and "[pending]" or "[unmanaged]"
+    table.insert(lines, ("  %s %s  (%s)"):format(mark, n, p.rev or "?"))
   end
   vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
 end
 
-M._state = state  -- exposed for health.lua
+M._state = state  -- for health.lua
 return M
