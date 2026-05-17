@@ -15,11 +15,17 @@ local function rev_parse(path, ref)
   return code == 0 and out or nil
 end
 
+-- Returns target_sha, label, opt_warning.
 local function compute_target(plug)
   local v = plug.spec and plug.spec.version
   if type(v) == "string" then
     local sha = rev_parse(plug.path, v)
     if sha then return sha, "version=" .. v end
+    -- Pinned version exists but doesn't resolve locally; signal explicitly.
+    local fallback_warn = ("VERSION UNRESOLVED: pinned %q not found locally, falling back to origin/HEAD"):format(v)
+    local code, branch = git({ "rev-parse", "--abbrev-ref", "origin/HEAD" }, plug.path)
+    if code ~= 0 then return nil, "origin/HEAD", fallback_warn end
+    return rev_parse(plug.path, branch), "origin/HEAD", fallback_warn
   end
   local code, branch = git({ "rev-parse", "--abbrev-ref", "origin/HEAD" }, plug.path)
   if code ~= 0 then return nil, "origin/HEAD" end
@@ -30,13 +36,14 @@ local function review_one(plug)
   local e = { name = plug.spec.name, path = plug.path, findings = {}, log = {} }
   local code, _, ferr = git({ "fetch", "--quiet", "origin" }, plug.path)
   if code ~= 0 then
-    table.insert(e.findings, "FETCH FAILED: " .. ferr)
+    table.insert(e.findings, "FETCH-FAILED: " .. ferr)
     return e
   end
 
   local head = plug.rev or rev_parse(plug.path, "HEAD")
-  local target, label = compute_target(plug)
+  local target, label, vwarn = compute_target(plug)
   e.head, e.target, e.target_label = head, target, label
+  if vwarn then table.insert(e.findings, vwarn) end
 
   if not target then
     table.insert(e.findings, "TARGET UNRESOLVED: " .. (label or "?"))
