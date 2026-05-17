@@ -64,6 +64,21 @@ function M.setup(opts)
   -- Build.attach uses an augroup with clear=true, so calling repeatedly is safe.
   Build.attach(state.config)
 
+  -- Fire `User VeryLazy` after startup so specs with `event = "VeryLazy"`
+  -- (lazy.nvim convention) load post-init. Idempotent: augroup is cleared.
+  local g = vim.api.nvim_create_augroup("pakku.verylazy", { clear = true })
+  local function fire_verylazy()
+    vim.api.nvim_exec_autocmds("User", { pattern = "VeryLazy", modeline = false })
+  end
+  if vim.v.vim_did_enter == 1 then
+    vim.schedule(fire_verylazy)
+  else
+    vim.api.nvim_create_autocmd("VimEnter", {
+      group = g, once = true,
+      callback = function() vim.schedule(fire_verylazy) end,
+    })
+  end
+
   vim.api.nvim_create_user_command("Pakku", function(args)
     local sub = args.fargs[1]
     local rest = vim.list_slice(args.fargs, 2)
@@ -105,14 +120,26 @@ function M.add(specs)
     Loader.register(entry.lazy)
   end
 
-  local eager_pack, lazy_pack, eager_specs = {}, {}, {}
+  local eager_entries, lazy_pack = {}, {}
   for _, entry in ipairs(normalized) do
     if entry.lazy.is_lazy then
       table.insert(lazy_pack, entry.pack)
     else
-      table.insert(eager_pack, entry.pack)
-      table.insert(eager_specs, entry.lazy)
+      table.insert(eager_entries, entry)
     end
+  end
+
+  -- Higher priority loads first (lazy.nvim parity). Default 50. Stable on ties.
+  table.sort(eager_entries, function(a, b)
+    local pa = a.lazy.priority or 50
+    local pb = b.lazy.priority or 50
+    return pa > pb
+  end)
+
+  local eager_pack, eager_specs = {}, {}
+  for _, entry in ipairs(eager_entries) do
+    table.insert(eager_pack, entry.pack)
+    table.insert(eager_specs, entry.lazy)
   end
 
   if #eager_pack > 0 then

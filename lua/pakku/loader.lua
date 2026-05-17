@@ -68,11 +68,31 @@ function M.register(spec)
   local name = spec.name
 
   if spec.event then
-    vim.api.nvim_create_autocmd(as_list(spec.event), {
-      group = group,
-      once = true,
-      callback = function() M.load(name) end,
-    })
+    -- Split events into native nvim events vs. lazy.nvim-style virtual events
+    -- (VeryLazy, BufRead, etc. that need User-event aliasing).
+    local native, virtual = {}, {}
+    for _, e in ipairs(as_list(spec.event)) do
+      if e == "VeryLazy" then
+        table.insert(virtual, "VeryLazy")
+      else
+        table.insert(native, e)
+      end
+    end
+    if #native > 0 then
+      vim.api.nvim_create_autocmd(native, {
+        group = group,
+        once = true,
+        callback = function() M.load(name) end,
+      })
+    end
+    if #virtual > 0 then
+      vim.api.nvim_create_autocmd("User", {
+        group = group,
+        pattern = virtual,
+        once = true,
+        callback = function() M.load(name) end,
+      })
+    end
   end
 
   if spec.ft then
