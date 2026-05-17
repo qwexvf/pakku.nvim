@@ -6,8 +6,19 @@ local Spec = require("packline.spec")
 local Loader = require("packline.loader")
 local Build = require("packline.build")
 local Scanner = require("packline.scanner")
+local Policy = require("packline.policy")
 
 local defaults = {
+  performance = {
+    loader = true,  -- vim.loader.enable() bytecode cache
+  },
+  security = {
+    allowlist = {   -- empty = allow any host
+      "github.com", "codeberg.org", "gitlab.com", "git.sr.ht",
+    },
+    require_https = true,        -- reject git:// and http:// schemes
+    require_pinned_version = false,  -- warn (not block) when version=nil
+  },
   scanner = {
     enabled = false,  -- opt-in: requires aegis on PATH
     bin = "aegis",
@@ -46,6 +57,10 @@ function M.setup(opts)
   if state.config.scanner.report_dir == nil then
     state.config.scanner.report_dir = vim.fs.joinpath(vim.fn.stdpath("state"), "packline", "scans")
   end
+  -- vim.loader caches compiled Lua bytecode; ~10-30ms cold start win per plugin.
+  if state.config.performance.loader and vim.loader and not vim.loader.enabled then
+    pcall(vim.loader.enable)
+  end
   -- Build.attach uses an augroup with clear=true, so calling repeatedly is safe.
   Build.attach(state.config)
 
@@ -80,6 +95,8 @@ end
 function M.add(specs)
   ensure_pack()
   local normalized = Spec.normalize(specs)
+  normalized = Policy.filter(normalized, state.config.security)
+  if #normalized == 0 then return end
 
   -- Single registration path: every spec lands in Loader.by_name; lazy ones also get triggers.
   for _, entry in ipairs(normalized) do

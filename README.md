@@ -1,14 +1,30 @@
 # packline.nvim
 
-A thin DX layer over Neovim 0.12's built-in `vim.pack`.
+Performance- and security-focused plugin manager built on Neovim 0.12's
+`vim.pack`.
 
-`vim.pack` already gives you installs, updates, a lockfile (`nvim-pack-lock.json`),
-semver via `vim.version.range`, and `PackChanged` events. What it doesn't give you:
-lazy-load triggers, build steps, dependency ordering, or the `opts → setup()` sugar
-that makes lazy.nvim pleasant.
+`vim.pack` ships installs, updates, lockfile (`nvim-pack-lock.json`), semver,
+and `PackChanged` events. packline adds the missing pieces on top:
 
-packline adds exactly those four things — and nothing else — plus optional
-supply-chain scanning via [aegis-cli](https://github.com/qwexvf/aegis-cli).
+**DX layer**
+- lazy-load triggers (event/ft/cmd)
+- build hooks (`PackChanged` → shell or ex-cmd)
+- dependency ordering
+- `opts → require(modname).setup(opts)` sugar
+
+**Performance**
+- `vim.loader` (bytecode cache) auto-enabled on setup — ~10–30 ms cold-start win per plugin
+- lazy specs never `:packadd` until their trigger fires
+- single-pass spec normalization with topological sort
+
+**Security**
+- source allowlist — default reject anything outside `github.com`, `codeberg.org`,
+  `gitlab.com`, `git.sr.ht`
+- HTTPS-only by default (rejects `http://` and `git://` URLs)
+- optional unpinned-version warning (flags specs tracking default branch)
+- optional supply-chain scanning via
+  [aegis-cli](https://github.com/qwexvf/aegis-cli)
+  for GitHub Actions workflows + manifest-bearing transitive deps
 
 ## Status
 
@@ -26,9 +42,17 @@ Pre-release. Single user (me). API may break.
 vim.pack.add({ { src = "https://github.com/qwexvf/packline.nvim" } })
 
 require("packline").setup({
+  performance = {
+    loader = true,                -- vim.loader.enable()
+  },
+  security = {
+    allowlist = { "github.com", "codeberg.org" },
+    require_https = true,
+    require_pinned_version = false,  -- set true to warn on default-branch specs
+  },
   scanner = {
-    enabled = true,        -- run aegis on install/update
-    fail_on = "block",     -- safe | review | prompt | block
+    enabled = true,               -- run aegis on install/update
+    fail_on = "block",            -- safe | review | prompt | block
   },
 })
 
@@ -84,6 +108,21 @@ Superset of `vim.pack`'s spec:
 | `:Packline scan [name]`      | Run aegis-cli over one or all plugins. |
 
 `:checkhealth packline` reports environment.
+
+## Security model
+
+packline enforces three policies *before* `vim.pack.add()` ever runs:
+
+1. **Host allowlist** — `src` host must be in `security.allowlist`. Default list
+   covers the four major forges; empty list disables the check.
+2. **HTTPS-only** — `git://` and `http://` schemes are rejected. SSH (`git@host:`)
+   is permitted (assumes user manages keys).
+3. **Unpinned warning** — opt-in via `security.require_pinned_version = true`.
+   Emits a WARN for any spec with no `version` field (default-branch tracking is
+   a supply-chain risk: maintainer compromise → next update pulls malicious HEAD).
+
+Rejected specs are dropped with `vim.notify(ERROR)` before any network or
+filesystem activity.
 
 ## Scanner
 
