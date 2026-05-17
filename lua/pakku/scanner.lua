@@ -112,33 +112,53 @@ function M.scan_all(opts)
   end
 end
 
--- Synchronous capability scan for use in the install gate (init.lua M.add).
--- Caches by (name, rev) so re-running pakku.add on every nvim launch only
--- pays the aegis cost when the commit SHA changes. Returns a table with:
---   { verdict, risk_score, capabilities, evidence, cached (bool) }
--- or nil if aegis is missing / produced no usable output.
+-- Cache path for an analyze verdict, keyed by (name, rev[0:8]).
+local function cache_path_for(report_dir, name, rev)
+  return vim.fs.joinpath(
+    report_dir,
+    ("%s-%s.cache.json"):format(name, (rev or "unknown"):sub(1, 8))
+  )
+end
+
+local function read_cache(path)
+  local fr = io.open(path, "r")
+  if not fr then return nil end
+  local body = fr:read("*a")
+  fr:close()
+  local ok, data = pcall(vim.json.decode, body)
+  if not ok or type(data) ~= "table" then return nil end
+  data.cached = true
+  return data
+end
+
+local function write_cache(path, body)
+  vim.fn.mkdir(vim.fs.dirname(path), "p")
+  local fw = io.open(path, "w")
+  if not fw then return end
+  fw:write(body)
+  fw:close()
+end
+
+-- Read-only cache lookup. Returns cached verdict table or nil. No subprocess.
+-- The install gate uses this on startup so cached plugins decide in microseconds.
+function M.cache_lookup(plugin, opts)
+  opts = opts or {}
+  local report_dir = opts.report_dir or vim.fs.joinpath(vim.fn.stdpath("state"), "pakku", "scans")
+  return read_cache(cache_path_for(report_dir, plugin.name, plugin.rev))
+end
+
+-- Synchronous capability scan. Used only when caller explicitly wants to block
+-- (e.g. interactive :Pakku scan). Hot path on startup goes through cache_lookup
+-- + scan_async instead.
 function M.scan_sync(plugin, opts)
   opts = opts or {}
+  local cached = M.cache_lookup(plugin, opts)
+  if cached then return cached end
+
   local bin = opts.bin or "aegis"
   if vim.fn.executable(bin) ~= 1 then return nil end
-
   local report_dir = opts.report_dir or vim.fs.joinpath(vim.fn.stdpath("state"), "pakku", "scans")
-  local rev = (plugin.rev or "unknown"):sub(1, 8)
-  local cache_path = vim.fs.joinpath(report_dir, ("%s-%s.cache.json"):format(plugin.name, rev))
 
-  -- Cache hit: read + decode + return.
-  local fr = io.open(cache_path, "r")
-  if fr then
-    local body = fr:read("*a")
-    fr:close()
-    local ok, data = pcall(vim.json.decode, body)
-    if ok and type(data) == "table" then
-      data.cached = true
-      return data
-    end
-  end
-
-  -- Cache miss: run aegis synchronously.
   local cmd = { bin, "analyze", "--ecosystem", "neovim", plugin.path, "--json" }
   if opts.evidence then table.insert(cmd, "--evidence") end
   local res = vim.system(cmd, { text = true }):wait()
@@ -146,14 +166,35 @@ function M.scan_sync(plugin, opts)
   local ok, data = pcall(vim.json.decode, res.stdout or "")
   if not ok or type(data) ~= "table" then return nil end
 
-  vim.fn.mkdir(report_dir, "p")
-  local fw = io.open(cache_path, "w")
-  if fw then
-    fw:write(res.stdout)
-    fw:close()
-  end
+  write_cache(cache_path_for(report_dir, plugin.name, plugin.rev), res.stdout)
   data.cached = false
   return data
+end
+
+-- Async capability scan. Fires aegis in the background and invokes on_done(data)
+-- (or on_done(nil) on failure) via vim.schedule so callers can call vim APIs.
+-- Used by the install gate to defer plugin activation when the verdict isn't
+-- yet cached. Does NOT consult the cache itself — caller should check first.
+function M.scan_async(plugin, opts, on_done)
+  opts = opts or {}
+  local bin = opts.bin or "aegis"
+  if vim.fn.executable(bin) ~= 1 then
+    return vim.schedule(function() on_done(nil) end)
+  end
+  local report_dir = opts.report_dir or vim.fs.joinpath(vim.fn.stdpath("state"), "pakku", "scans")
+
+  local cmd = { bin, "analyze", "--ecosystem", "neovim", plugin.path, "--json" }
+  if opts.evidence then table.insert(cmd, "--evidence") end
+  vim.system(cmd, { text = true }, function(res)
+    vim.schedule(function()
+      if res.code > 1 then return on_done(nil) end
+      local ok, data = pcall(vim.json.decode, res.stdout or "")
+      if not ok or type(data) ~= "table" then return on_done(nil) end
+      write_cache(cache_path_for(report_dir, plugin.name, plugin.rev), res.stdout)
+      data.cached = false
+      on_done(data)
+    end)
+  end)
 end
 
 return M
