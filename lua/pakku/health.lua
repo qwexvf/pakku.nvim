@@ -36,9 +36,7 @@ function M.check()
     if vim.fn.executable(bin) == 1 then
       h.ok("aegis-cli on PATH: " .. bin)
       local res = vim.system({ bin, "--version" }, { text = true }):wait()
-      if res.code == 0 then
-        h.info("aegis version: " .. (res.stdout or ""):gsub("\n$", ""))
-      end
+      if res.code == 0 then h.info("aegis version: " .. (res.stdout or ""):gsub("\n$", "")) end
     else
       h.warn(("scanner enabled but `%s` not on PATH"):format(bin))
     end

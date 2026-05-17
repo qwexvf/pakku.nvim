@@ -33,18 +33,21 @@ function M.show()
       total = total + r.ms
       n_loaded = n_loaded + 1
       local bar = string.rep("█", math.min(40, math.floor(r.ms)))
-      table.insert(lines, ("  %7.2f ms  [%-5s]  %-30s  %s"):format(
-        r.ms, r.kind, r.name, bar))
+      table.insert(lines, ("  %7.2f ms  [%-5s]  %-30s  %s"):format(r.ms, r.kind, r.name, bar))
     else
       n_pending = n_pending + 1
-      table.insert(lines, ("  %7s     [%-5s]  %-30s  (not yet triggered)"):format(
-        "—", r.kind, r.name))
+      table.insert(
+        lines,
+        ("  %7s     [%-5s]  %-30s  (not yet triggered)"):format("—", r.kind, r.name)
+      )
     end
   end
 
   table.insert(lines, "")
-  table.insert(lines, ("  loaded: %d  pending: %d  total config time: %.2f ms"):format(
-    n_loaded, n_pending, total))
+  table.insert(
+    lines,
+    ("  loaded: %d  pending: %d  total config time: %.2f ms"):format(n_loaded, n_pending, total)
+  )
 
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -54,11 +57,15 @@ function M.show()
   local w = math.floor(vim.o.columns * 0.85)
   local h = math.floor(vim.o.lines * 0.8)
   vim.api.nvim_open_win(buf, true, {
-    relative = "editor", width = w, height = h,
+    relative = "editor",
+    width = w,
+    height = h,
     row = math.floor((vim.o.lines - h) / 2),
     col = math.floor((vim.o.columns - w) / 2),
-    border = "rounded", title = " pakku profile  (q to close) ",
-    title_pos = "center", style = "minimal",
+    border = "rounded",
+    title = " pakku profile  (q to close) ",
+    title_pos = "center",
+    style = "minimal",
   })
   vim.keymap.set("n", "q", "<cmd>close<cr>", { buffer = buf, nowait = true })
 end

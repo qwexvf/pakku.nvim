@@ -4,12 +4,17 @@
 -- Update/Clean/Log tabs reserved (use :Pakku <cmd> from CLI for now).
 local M = {}
 
-local TABS  = { "Home", "Update", "Clean", "Log" }
-local ICONS = { active = "●", pending = "○", unmanaged = "·",
-                expanded = "▼", collapsed = "▶" }
+local TABS = { "Home", "Update", "Clean", "Log" }
+local ICONS = {
+  active = "●",
+  pending = "○",
+  unmanaged = "·",
+  expanded = "▼",
+  collapsed = "▶",
+}
 local SECTIONS = {
-  { name = "Loaded",    key = "active",    hl = "PakkuActive"    },
-  { name = "Pending",   key = "pending",   hl = "PakkuPending"   },
+  { name = "Loaded", key = "active", hl = "PakkuActive" },
+  { name = "Pending", key = "pending", hl = "PakkuPending" },
   { name = "Unmanaged", key = "unmanaged", hl = "PakkuUnmanaged" },
 }
 
@@ -27,8 +32,8 @@ local function get_plugins()
   local L = require("pakku.loader")
   for _, p in ipairs(plugins) do
     p._st = L.active[p.spec.name] and "active"
-         or L.pending[p.spec.name] and "pending"
-         or "unmanaged"
+      or L.pending[p.spec.name] and "pending"
+      or "unmanaged"
     p._lazy = L.by_name[p.spec.name]
   end
   return plugins
@@ -48,9 +53,16 @@ local function render_home(plugins)
       emit(("── %s (%d)"):format(sec.name, #matches), "PakkuSection")
       for _, p in ipairs(matches) do
         local exp = state.expanded[p.spec.name] and ICONS.expanded or ICONS.collapsed
-        local row = emit(("  %s %s  %-28s %-10s %s"):format(
-          exp, ICONS[sec.key], p.spec.name, (p.rev or ""):sub(1, 8), host_of(p.spec.src)),
-          sec.hl)
+        local row = emit(
+          ("  %s %s  %-28s %-10s %s"):format(
+            exp,
+            ICONS[sec.key],
+            p.spec.name,
+            (p.rev or ""):sub(1, 8),
+            host_of(p.spec.src)
+          ),
+          sec.hl
+        )
         row_map[row] = p.spec.name
 
         if state.expanded[p.spec.name] then
@@ -60,9 +72,9 @@ local function render_home(plugins)
           detail("rev", p.rev or "?")
           if p.spec.version then detail("version", tostring(p.spec.version)) end
           if lz.event then detail("event", vim.inspect(lz.event)) end
-          if lz.ft    then detail("ft",    vim.inspect(lz.ft))    end
-          if lz.cmd   then detail("cmd",   vim.inspect(lz.cmd))   end
-          if lz.build then detail("build", tostring(lz.build))    end
+          if lz.ft then detail("ft", vim.inspect(lz.ft)) end
+          if lz.cmd then detail("cmd", vim.inspect(lz.cmd)) end
+          if lz.build then detail("build", tostring(lz.build)) end
           if lz.priority then detail("priority", tostring(lz.priority)) end
         end
       end
@@ -90,13 +102,20 @@ local function render_lines()
   if state.tab == "Home" then
     body, body_hl, body_rows = render_home(get_plugins())
   else
-    body = { "", "  " .. state.tab .. " tab — use :Pakku " .. state.tab:lower() .. " from CLI", "" }
+    body =
+      { "", "  " .. state.tab .. " tab — use :Pakku " .. state.tab:lower() .. " from CLI", "" }
     body_hl, body_rows = {}, {}
   end
   local offset = #lines
-  for _, l in ipairs(body) do table.insert(lines, l) end
-  for _, h in ipairs(body_hl) do table.insert(hl, { row = h.row + offset, group = h.group }) end
-  for r, n in pairs(body_rows) do row_map[r + offset] = n end
+  for _, l in ipairs(body) do
+    table.insert(lines, l)
+  end
+  for _, h in ipairs(body_hl) do
+    table.insert(hl, { row = h.row + offset, group = h.group })
+  end
+  for r, n in pairs(body_rows) do
+    row_map[r + offset] = n
+  end
   return lines, hl, row_map
 end
 
@@ -109,7 +128,13 @@ local function refresh()
   state.row_map = row_map
   vim.api.nvim_buf_clear_namespace(state.buf, ns, 0, -1)
   for _, h in ipairs(hl) do
-    vim.api.nvim_buf_set_extmark(state.buf, ns, h.row - 1, 0, { end_line = h.row, hl_group = h.group })
+    vim.api.nvim_buf_set_extmark(
+      state.buf,
+      ns,
+      h.row - 1,
+      0,
+      { end_line = h.row, hl_group = h.group }
+    )
   end
 end
 
@@ -128,31 +153,51 @@ local function cycle(delta)
 end
 
 local function setup_hl()
-  local function defhl(n, a) if vim.fn.hlexists(n) == 0 then vim.api.nvim_set_hl(0, n, a) end end
-  defhl("PakkuActive",    { link = "DiagnosticOk" })
-  defhl("PakkuPending",   { link = "DiagnosticHint" })
+  local function defhl(n, a)
+    if vim.fn.hlexists(n) == 0 then vim.api.nvim_set_hl(0, n, a) end
+  end
+  defhl("PakkuActive", { link = "DiagnosticOk" })
+  defhl("PakkuPending", { link = "DiagnosticHint" })
   defhl("PakkuUnmanaged", { link = "Comment" })
-  defhl("PakkuSection",   { link = "Title" })
-  defhl("PakkuDetail",    { link = "Comment" })
-  defhl("PakkuTabs",      { link = "Statement" })
+  defhl("PakkuSection", { link = "Title" })
+  defhl("PakkuDetail", { link = "Comment" })
+  defhl("PakkuTabs", { link = "Statement" })
 end
 
 local function setup_keys(buf)
   local function map(k, fn, desc)
-    vim.keymap.set("n", k, fn, { buffer = buf, nowait = true, silent = true, desc = "pakku: " .. desc })
+    vim.keymap.set(
+      "n",
+      k,
+      fn,
+      { buffer = buf, nowait = true, silent = true, desc = "pakku: " .. desc }
+    )
   end
   map("q", function() M.close() end, "close")
   map("R", refresh, "refresh")
   map("<CR>", function()
     local n = at_cursor()
-    if n then state.expanded[n] = not state.expanded[n]; refresh() end
+    if n then
+      state.expanded[n] = not state.expanded[n]
+      refresh()
+    end
   end, "toggle detail")
-  map("U", function() local n = at_cursor(); if n then require("pakku").update({ n }) end end, "update")
-  map("V", function() local n = at_cursor(); if n then require("pakku").review({ n }) end end, "review")
+  map("U", function()
+    local n = at_cursor()
+    if n then require("pakku").update({ n }) end
+  end, "update")
+  map("V", function()
+    local n = at_cursor()
+    if n then require("pakku").review({ n }) end
+  end, "review")
   map("X", function()
-    local n = at_cursor(); if not n then return end
+    local n = at_cursor()
+    if not n then return end
     vim.ui.select({ "Yes", "No" }, { prompt = "Clean " .. n .. "?" }, function(c)
-      if c == "Yes" then require("pakku").clean({ n }); refresh() end
+      if c == "Yes" then
+        require("pakku").clean({ n })
+        refresh()
+      end
     end)
   end, "clean")
   map("L", function() cycle(1) end, "next tab")
@@ -163,7 +208,9 @@ end
 function M.open()
   setup_hl()
   if state.win and vim.api.nvim_win_is_valid(state.win) then
-    vim.api.nvim_set_current_win(state.win); refresh(); return
+    vim.api.nvim_set_current_win(state.win)
+    refresh()
+    return
   end
   if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then
     state.buf = vim.api.nvim_create_buf(false, true)
@@ -174,10 +221,15 @@ function M.open()
   end
   local w, h = math.floor(vim.o.columns * 0.9), math.floor(vim.o.lines * 0.85)
   state.win = vim.api.nvim_open_win(state.buf, true, {
-    relative = "editor", width = w, height = h,
+    relative = "editor",
+    width = w,
+    height = h,
     row = math.floor((vim.o.lines - h) / 2),
     col = math.floor((vim.o.columns - w) / 2),
-    border = "rounded", title = " pakku  (? for help) ", title_pos = "center", style = "minimal",
+    border = "rounded",
+    title = " pakku  (? for help) ",
+    title_pos = "center",
+    style = "minimal",
   })
   vim.wo[state.win].cursorline = true
   vim.wo[state.win].wrap = false
@@ -193,7 +245,8 @@ end
 
 function M.help()
   vim.notify(table.concat({
-    "pakku keymaps", "",
+    "pakku keymaps",
+    "",
     "  q        close",
     "  R        refresh",
     "  <CR>     toggle plugin detail",

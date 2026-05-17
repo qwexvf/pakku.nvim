@@ -21,7 +21,12 @@ function M.check(pack_spec, cfg)
 
   if cfg.allowlist and #cfg.allowlist > 0 then
     local ok = false
-    for _, h in ipairs(cfg.allowlist) do if host == h then ok = true break end end
+    for _, h in ipairs(cfg.allowlist) do
+      if host == h then
+        ok = true
+        break
+      end
+    end
     if not ok then return false, ("host %q not in allowlist"):format(host) end
   end
 

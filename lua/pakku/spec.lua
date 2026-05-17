@@ -20,8 +20,12 @@ end
 
 local function infer_modname(name, explicit)
   if explicit then return explicit end
-  return name:gsub("%.nvim$", ""):gsub("%.lua$", ""):gsub("%.vim$", "")
-             :gsub("^nvim%-", ""):gsub("%-nvim$", "")
+  return name
+    :gsub("%.nvim$", "")
+    :gsub("%.lua$", "")
+    :gsub("%.vim$", "")
+    :gsub("^nvim%-", "")
+    :gsub("%-nvim$", "")
 end
 
 -- vim.pack accepts tag/branch/sha strings or vim.version.range(...) output.
@@ -49,7 +53,9 @@ local function coerce_deps(deps)
   if deps == nil then return nil end
   if type(deps) == "string" then return { coerce(deps) } end
   local out = {}
-  for _, d in ipairs(deps) do table.insert(out, coerce(d)) end
+  for _, d in ipairs(deps) do
+    table.insert(out, coerce(d))
+  end
   return out
 end
 
@@ -63,12 +69,16 @@ local function split(raw)
   local lazy_spec = {
     name = pack_spec.name,
     modname = infer_modname(pack_spec.name, raw.modname),
-    opts = raw.opts, config = raw.config, build = raw.build,
-    event = raw.event, ft = raw.ft, cmd = raw.cmd, keys = raw.keys,
+    opts = raw.opts,
+    config = raw.config,
+    build = raw.build,
+    event = raw.event,
+    ft = raw.ft,
+    cmd = raw.cmd,
+    keys = raw.keys,
     priority = raw.priority,
   }
-  lazy_spec.is_lazy = (raw.event ~= nil) or (raw.ft ~= nil)
-                      or (raw.cmd ~= nil) or (raw.keys ~= nil)
+  lazy_spec.is_lazy = (raw.event ~= nil) or (raw.ft ~= nil) or (raw.cmd ~= nil) or (raw.keys ~= nil)
   return pack_spec, lazy_spec
 end
 
@@ -90,7 +100,9 @@ local function walk_import_dir(modpath, dir)
   local out = {}
   local init_ok, init_mod = pcall(require, modpath)
   if init_ok then
-    for _, sub in ipairs(as_speclist(init_mod)) do table.insert(out, sub) end
+    for _, sub in ipairs(as_speclist(init_mod)) do
+      table.insert(out, sub)
+    end
   end
   local files = vim.fn.glob(dir .. "*.lua", false, true)
   table.sort(files)
@@ -99,7 +111,9 @@ local function walk_import_dir(modpath, dir)
     if base ~= "init" then
       local ok, mod = pcall(require, modpath .. "." .. base)
       if ok then
-        for _, sub in ipairs(as_speclist(mod)) do table.insert(out, sub) end
+        for _, sub in ipairs(as_speclist(mod)) do
+          table.insert(out, sub)
+        end
       end
     end
   end
@@ -119,7 +133,9 @@ local function expand_imports(specs)
         if not ok then error(("pakku: import '%s' failed: %s"):format(raw.import, mod)) end
         imported = as_speclist(mod)
       end
-      for _, sub in ipairs(expand_imports(imported)) do table.insert(out, sub) end
+      for _, sub in ipairs(expand_imports(imported)) do
+        table.insert(out, sub)
+      end
     else
       table.insert(out, raw)
     end
@@ -134,7 +150,12 @@ local function add_list(target, field, val)
   cur = (cur == nil) and {} or (type(cur) == "table" and cur or { cur })
   for _, v in ipairs(type(val) == "table" and val or { val }) do
     local has = false
-    for _, e in ipairs(cur) do if e == v then has = true break end end
+    for _, e in ipairs(cur) do
+      if e == v then
+        has = true
+        break
+      end
+    end
     if not has then table.insert(cur, v) end
   end
   target[field] = cur
@@ -147,26 +168,25 @@ local function merge_into(existing, later)
   if later.data ~= nil then p.data = later.data end
   if later.opts ~= nil then
     l.opts = (type(l.opts) == "table" and type(later.opts) == "table")
-      and vim.tbl_deep_extend("force", l.opts, later.opts) or later.opts
+        and vim.tbl_deep_extend("force", l.opts, later.opts)
+      or later.opts
   end
   for _, k in ipairs({ "config", "build", "modname", "priority" }) do
     if later[k] ~= nil then l[k] = later[k] end
   end
   add_list(l, "event", later.event)
-  add_list(l, "ft",    later.ft)
-  add_list(l, "cmd",   later.cmd)
+  add_list(l, "ft", later.ft)
+  add_list(l, "cmd", later.cmd)
   if later.keys ~= nil then
     l.keys = l.keys or {}
+    -- Accept lazy.nvim shape (string | string[] | spec[]). Don't dedup —
+    -- entries may share lhs but differ on mode.
     local list = type(later.keys) == "table" and later.keys or { later.keys }
-    -- Accept lazy.nvim shape; we don't try to dedup precisely (keys can be
-    -- table entries with overlapping lhs but different modes).
-    if type(list[1]) == "string" or not list[1] then list = { list } end
-    for _, k in ipairs(type(later.keys) == "table" and later.keys or { later.keys }) do
+    for _, k in ipairs(list) do
       table.insert(l.keys, k)
     end
   end
-  l.is_lazy = (l.event ~= nil) or (l.ft ~= nil)
-              or (l.cmd ~= nil) or (l.keys ~= nil)
+  l.is_lazy = (l.event ~= nil) or (l.ft ~= nil) or (l.cmd ~= nil) or (l.keys ~= nil)
 end
 
 -- Flatten + dedupe. Returns ordered { pack, lazy } entries; deps emitted before
@@ -182,12 +202,18 @@ function M.normalize(specs)
       return
     end
     local deps = coerce_deps(raw.dependencies)
-    if deps then for _, d in ipairs(deps) do visit(d) end end
+    if deps then
+      for _, d in ipairs(deps) do
+        visit(d)
+      end
+    end
     local pack_spec, lazy_spec = split(raw)
     table.insert(out, { pack = pack_spec, lazy = lazy_spec })
     seen[name] = #out
   end
-  for _, raw in ipairs(expand_imports(specs)) do visit(raw) end
+  for _, raw in ipairs(expand_imports(specs)) do
+    visit(raw)
+  end
   return out
 end
 

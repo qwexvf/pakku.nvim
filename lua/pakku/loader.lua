@@ -1,9 +1,9 @@
 -- lazy-load triggers + opts/config dispatch.
 local M = {
-  pending = {},  -- name -> lazy_spec (awaiting trigger)
-  active  = {},  -- name -> true
-  by_name = {},  -- name -> lazy_spec (all specs)
-  times   = {},  -- name -> { ms = N, kind = "eager"|"lazy" } load timing
+  pending = {}, -- name -> lazy_spec (awaiting trigger)
+  active = {}, -- name -> true
+  by_name = {}, -- name -> lazy_spec (all specs)
+  times = {}, -- name -> { ms = N, kind = "eager"|"lazy" } load timing
 }
 
 local _hrtime = (vim.uv or vim.loop).hrtime
@@ -12,18 +12,23 @@ local function elapsed_ms(t0) return (_hrtime() - t0) / 1e6 end
 local group = vim.api.nvim_create_augroup("pakku.loader", { clear = true })
 
 local function warn(fmt, ...) vim.notify(("pakku: " .. fmt):format(...), vim.log.levels.WARN) end
-local function err(fmt, ...)  vim.notify(("pakku: " .. fmt):format(...), vim.log.levels.ERROR) end
+local function err(fmt, ...) vim.notify(("pakku: " .. fmt):format(...), vim.log.levels.ERROR) end
 
 -- Candidate require() names, in order of preference. Naming convention
 -- is inconsistent: nvim-surround keeps prefix, nvim-lspconfig strips it,
 -- nvim-web-devicons keeps prefix. We try a few until one yields setup().
 local function modname_candidates(spec)
   local list, seen = {}, {}
-  local function add(s) if s and s ~= "" and not seen[s] then seen[s] = true; table.insert(list, s) end end
-  add(spec.modname)                                  -- inferred (suffix+prefix stripped)
-  add(spec.name)                                     -- raw name as-is (nvim-surround style)
-  add((spec.name:gsub("%.nvim$", "")):gsub("%-nvim$", ""))  -- only suffix stripped
-  add((spec.name:gsub("^nvim%-", "")))                       -- only prefix stripped
+  local function add(s)
+    if s and s ~= "" and not seen[s] then
+      seen[s] = true
+      table.insert(list, s)
+    end
+  end
+  add(spec.modname) -- inferred (suffix+prefix stripped)
+  add(spec.name) -- raw name as-is (nvim-surround style)
+  add((spec.name:gsub("%.nvim$", "")):gsub("%-nvim$", "")) -- only suffix stripped
+  add((spec.name:gsub("^nvim%-", ""))) -- only prefix stripped
   return list
 end
 
@@ -39,12 +44,11 @@ local function apply_config(spec)
     tried = (tried and tried .. ", " or "") .. n
     local ok, m = pcall(require, n)
     if ok and type(m) == "table" and type(m.setup) == "function" then
-      mod = m; break
+      mod = m
+      break
     end
   end
-  if not mod then
-    return warn("no setup() for %s (tried: %s)", spec.name, tried or "?")
-  end
+  if not mod then return warn("no setup() for %s (tried: %s)", spec.name, tried or "?") end
   local ok, e = pcall(mod.setup, spec.opts)
   if not ok then err("%s setup error: %s", spec.name, e) end
 end
@@ -62,7 +66,7 @@ function M.load(name)
   M.times[name] = { ms = elapsed_ms(t0), kind = "lazy" }
 end
 
-function M.apply(spec)  -- eager: vim.pack already packadd'd; just config
+function M.apply(spec) -- eager: vim.pack already packadd'd; just config
   M.active[spec.name] = true
   local t0 = _hrtime()
   apply_config(spec)
@@ -73,7 +77,9 @@ local function as_list(v) return type(v) == "table" and v or { v } end
 
 local function on_event(name, events, pattern, ev)
   vim.api.nvim_create_autocmd(events, {
-    group = group, once = true, pattern = pattern,
+    group = group,
+    once = true,
+    pattern = pattern,
     callback = function() M.load(name) end,
   })
 end
@@ -93,8 +99,11 @@ local function normalize_keys(keys)
       local lhs = k.lhs or k[1]
       if lhs then
         local m = k.mode
-        if m == nil then m = { "n" }
-        elseif type(m) == "string" then m = { m } end
+        if m == nil then
+          m = { "n" }
+        elseif type(m) == "string" then
+          m = { m }
+        end
         table.insert(out, { lhs = lhs, modes = m })
       end
     end
@@ -113,7 +122,7 @@ function M.register(spec)
     for _, e in ipairs(as_list(spec.event)) do
       table.insert(e == "VeryLazy" and virtual or native, e)
     end
-    if #native > 0  then on_event(name, native, nil) end
+    if #native > 0 then on_event(name, native, nil) end
     if #virtual > 0 then on_event(name, "User", virtual) end
   end
 
@@ -145,10 +154,11 @@ function M.register(spec)
         vim.keymap.set(mode, lhs, function()
           -- Remove shim from every mode before re-feeding so the plugin's
           -- real keymap (installed by apply_config) handles the keypress.
-          for _, m in ipairs(modes) do pcall(vim.keymap.del, m, lhs) end
+          for _, m in ipairs(modes) do
+            pcall(vim.keymap.del, m, lhs)
+          end
           M.load(name)
-          vim.api.nvim_feedkeys(
-            vim.api.nvim_replace_termcodes(lhs, true, false, true), "m", false)
+          vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(lhs, true, false, true), "m", false)
         end, { silent = true, desc = "pakku-lazy: " .. name })
       end
     end

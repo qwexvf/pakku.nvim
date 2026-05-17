@@ -2,11 +2,11 @@
 -- Public API: setup, add, update, review, scan, clean, status.
 local M = {}
 
-local Spec    = require("pakku.spec")
-local Loader  = require("pakku.loader")
-local Build   = require("pakku.build")
+local Spec = require("pakku.spec")
+local Loader = require("pakku.loader")
+local Build = require("pakku.build")
 local Scanner = require("pakku.scanner")
-local Policy  = require("pakku.policy")
+local Policy = require("pakku.policy")
 
 local defaults = {
   performance = { loader = true },
@@ -16,13 +16,14 @@ local defaults = {
     require_pinned_version = false,
   },
   scanner = {
-    enabled = false, bin = "aegis",
+    enabled = false,
+    bin = "aegis",
     on = { "install", "update" },
-    analyze = true,     -- aegis analyze --ecosystem neovim (Lua AST capabilities)
-    actions = true,     -- aegis actions scan (GH Actions workflows)
-    sbom    = false,    -- aegis sbom (opt-in; low signal for pure-Lua plugins)
-    evidence = false,   -- include --evidence flag (file:line snippets in JSON)
-    fail_on = nil,      -- aegis --fail-on for actions: safe|review|prompt|block
+    analyze = true, -- aegis analyze --ecosystem neovim (Lua AST capabilities)
+    actions = true, -- aegis actions scan (GH Actions workflows)
+    sbom = false, -- aegis sbom (opt-in; low signal for pure-Lua plugins)
+    evidence = false, -- include --evidence flag (file:line snippets in JSON)
+    fail_on = nil, -- aegis --fail-on for actions: safe|review|prompt|block
     report_dir = nil,
   },
   confirm_update = true,
@@ -36,7 +37,11 @@ end
 
 local function merge(into, from)
   for k, v in pairs(from or {}) do
-    if type(v) == "table" and type(into[k]) == "table" then merge(into[k], v) else into[k] = v end
+    if type(v) == "table" and type(into[k]) == "table" then
+      merge(into[k], v)
+    else
+      into[k] = v
+    end
   end
 end
 
@@ -54,30 +59,42 @@ function M.setup(opts)
 
   -- Fire `User VeryLazy` after startup for lazy.nvim-style specs.
   local g = vim.api.nvim_create_augroup("pakku.verylazy", { clear = true })
-  local function fire() vim.api.nvim_exec_autocmds("User", { pattern = "VeryLazy", modeline = false }) end
+  local function fire()
+    vim.api.nvim_exec_autocmds("User", { pattern = "VeryLazy", modeline = false })
+  end
   if vim.v.vim_did_enter == 1 then
     vim.schedule(fire)
   else
-    vim.api.nvim_create_autocmd("VimEnter", { group = g, once = true, callback = function() vim.schedule(fire) end })
+    vim.api.nvim_create_autocmd(
+      "VimEnter",
+      { group = g, once = true, callback = function() vim.schedule(fire) end }
+    )
   end
 
   vim.api.nvim_create_user_command("Pakku", function(args)
     local sub, rest = args.fargs[1], vim.list_slice(args.fargs, 2)
-    if sub == nil or sub == "ui" then require("pakku.ui").open()
-    elseif sub == "status" then M.status()
-    elseif sub == "scan"   then M.scan(rest[1])
-    elseif sub == "update" then M.update(rest)
-    elseif sub == "review"  then M.review(rest)
-    elseif sub == "profile" then require("pakku.profile").show()
-    elseif sub == "clean"   then M.clean(rest)
-    else vim.notify("pakku: unknown subcommand " .. sub, vim.log.levels.ERROR) end
+    if sub == nil or sub == "ui" then
+      require("pakku.ui").open()
+    elseif sub == "status" then
+      M.status()
+    elseif sub == "scan" then
+      M.scan(rest[1])
+    elseif sub == "update" then
+      M.update(rest)
+    elseif sub == "review" then
+      M.review(rest)
+    elseif sub == "profile" then
+      require("pakku.profile").show()
+    elseif sub == "clean" then
+      M.clean(rest)
+    else
+      vim.notify("pakku: unknown subcommand " .. sub, vim.log.levels.ERROR)
+    end
   end, {
     nargs = "*",
     complete = function(arglead, line)
       local pool = SUBS
-      if not line:match("^Pakku%s+%S*$") then
-        pool = vim.tbl_keys(Loader.by_name)
-      end
+      if not line:match("^Pakku%s+%S*$") then pool = vim.tbl_keys(Loader.by_name) end
       return vim.tbl_filter(function(s) return s:find(arglead, 1, true) == 1 end, pool)
     end,
   })
@@ -88,7 +105,9 @@ function M.add(specs)
   local entries = Policy.filter(Spec.normalize(specs), state.config.security)
   if #entries == 0 then return end
 
-  for _, e in ipairs(entries) do Loader.register(e.lazy) end
+  for _, e in ipairs(entries) do
+    Loader.register(e.lazy)
+  end
 
   local eager, lazy_pack = {}, {}
   for _, e in ipairs(entries) do
@@ -100,9 +119,11 @@ function M.add(specs)
 
   local eager_pack = vim.tbl_map(function(e) return e.pack end, eager)
   local confirm = state.config.confirm_update
-  if #eager_pack > 0 then vim.pack.add(eager_pack, { load = true,  confirm = confirm }) end
-  if #lazy_pack  > 0 then vim.pack.add(lazy_pack,  { load = false, confirm = confirm }) end
-  for _, e in ipairs(eager) do Loader.apply(e.lazy) end
+  if #eager_pack > 0 then vim.pack.add(eager_pack, { load = true, confirm = confirm }) end
+  if #lazy_pack > 0 then vim.pack.add(lazy_pack, { load = false, confirm = confirm }) end
+  for _, e in ipairs(eager) do
+    Loader.apply(e.lazy)
+  end
 end
 
 function M.update(names)
@@ -128,7 +149,9 @@ end
 function M.scan(name)
   if name then
     local p = (vim.pack.get({ name }))[1]
-    if not p then return vim.notify("pakku: no installed plugin named " .. name, vim.log.levels.WARN) end
+    if not p then
+      return vim.notify("pakku: no installed plugin named " .. name, vim.log.levels.WARN)
+    end
     Scanner.scan_one({ name = p.spec.name, path = p.path }, state.config.scanner)
   else
     Scanner.scan_all(state.config.scanner)
@@ -141,11 +164,13 @@ function M.status()
   table.sort(plugins, function(a, b) return a.spec.name < b.spec.name end)
   for _, p in ipairs(plugins) do
     local n = p.spec.name
-    local mark = Loader.active[n] and "[active]" or Loader.pending[n] and "[pending]" or "[unmanaged]"
+    local mark = Loader.active[n] and "[active]"
+      or Loader.pending[n] and "[pending]"
+      or "[unmanaged]"
     table.insert(lines, ("  %s %s  (%s)"):format(mark, n, p.rev or "?"))
   end
   vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
 end
 
-M._state = state  -- for health.lua
+M._state = state -- for health.lua
 return M
