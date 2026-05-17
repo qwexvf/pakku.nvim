@@ -104,10 +104,30 @@ Superset of `vim.pack`'s spec:
 |---------|-------------|
 | `:Pakku status`           | List installed plugins + active/pending state. |
 | `:Pakku update [name]`    | Forward to `vim.pack.update`. |
+| `:Pakku review [name]`    | Fetch without applying; audit incoming diff for force-pushes + tag drift. Renders report in floating buffer. Press `q` to close. |
 | `:Pakku clean <name>`     | Forward to `vim.pack.del`. |
 | `:Pakku scan [name]`      | Run aegis-cli over one or all plugins. |
 
 `:checkhealth pakku` reports environment.
+
+## Pre-flight update audit
+
+`:Pakku review` fetches each plugin's remote without applying, then inspects
+the incoming range for tamper signals:
+
+- **Force-push** — current HEAD is not an ancestor of the fetch target.
+  Indicates the upstream rewrote history; verify before accepting.
+- **Tag drift** — when a spec pins `version = "v1.0"` but the fetched
+  commit for that tag has changed. Catches the "maintainer moved the
+  v1.0 tag to a new commit" attack.
+
+The floating buffer lists every plugin's current → target SHA, all findings
+prefixed with `!`, and the commit log between the two revs. Run before
+`:Pakku update` to gate the actual apply.
+
+New-contributor detection (warn when a commit in the range is authored by an
+email never seen for this plugin before) is queued for v0.3 — requires a
+persisted author state file.
 
 ## Security model
 

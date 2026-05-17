@@ -73,6 +73,8 @@ function M.setup(opts)
       M.scan(rest[1])
     elseif sub == "update" then
       M.update(rest)
+    elseif sub == "review" then
+      M.review(rest)
     elseif sub == "clean" then
       M.clean(rest)
     else
@@ -81,7 +83,7 @@ function M.setup(opts)
   end, {
     nargs = "*",
     complete = function(arglead, line)
-      local subs = { "status", "scan", "update", "clean" }
+      local subs = { "status", "scan", "update", "review", "clean" }
       if line:match("^Pakku%s+%S*$") then
         return vim.tbl_filter(function(s) return s:find(arglead, 1, true) == 1 end, subs)
       end
@@ -129,6 +131,12 @@ function M.update(names)
   ensure_pack()
   if names and #names == 0 then names = nil end
   vim.pack.update(names, { confirm = state.config.confirm_update })
+end
+
+function M.review(names)
+  ensure_pack()
+  if names and #names == 0 then names = nil end
+  require("pakku.review").review(names)
 end
 
 function M.clean(names)

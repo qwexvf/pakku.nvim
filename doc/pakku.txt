@@ -74,6 +74,9 @@ Plus optional supply-chain scanning via aegis-cli.
 
   :Pakku status              Active vs pending plugins.
   :Pakku update [name]       Forward to vim.pack.update.
+  :Pakku review [name]       Fetch without applying; audit incoming diff for
+                             force-pushes + tag drift. Floating buffer; q
+                             closes.
   :Pakku clean <name>        Forward to vim.pack.del.
   :Pakku scan [name]         Run aegis-cli on one or all plugins.
 
