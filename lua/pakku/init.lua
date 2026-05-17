@@ -25,13 +25,16 @@ local defaults = {
     evidence = false, -- include --evidence flag (file:line snippets in JSON)
     fail_on = nil, -- aegis --fail-on for actions: safe|review|prompt|block
     report_dir = nil,
-    -- Pre-activation gate (§2.1 of safety spec). Synchronous scan before
-    -- :packadd. Verdicts handled:
+    -- Pre-activation gate (§2.1 of safety spec). Verdicts handled:
     --   "off"    — no gate, plugin loads regardless of verdict
     --   "block"  — refuse load when verdict == "block"
     --   "prompt" — refuse load when verdict == "block" OR "prompt"
     -- Cached by (name, rev) under report_dir/<name>-<rev>.cache.json.
     gate = "block",
+    -- When true: notify for every gate decision (including allowed prompts).
+    -- When false (default): only notify on BLOCK. Keeps startup quiet for
+    -- legitimate plugins that report shell-spawn / env-read etc.
+    verbose = false,
   },
   confirm_update = true,
 }
@@ -114,27 +117,37 @@ local function verdict_blocks(verdict, strict)
   return false
 end
 
+-- vim.schedule so startup-time notifications don't fire the hit-enter prompt.
 local function notify_blocked(name, result)
-  vim.notify(
-    ("pakku: BLOCKED %s — verdict=%s risk=%d caps=[%s]%s"):format(
-      name,
-      result.verdict or "?",
-      result.risk_score or 0,
-      table.concat(result.capabilities or {}, ", "),
-      result.cached and " (cached)" or ""
-    ),
-    vim.log.levels.ERROR
+  vim.schedule(
+    function()
+      vim.notify(
+        ("pakku: BLOCKED %s — verdict=%s risk=%d caps=[%s]%s"):format(
+          name,
+          result.verdict or "?",
+          result.risk_score or 0,
+          table.concat(result.capabilities or {}, ", "),
+          result.cached and " (cached)" or ""
+        ),
+        vim.log.levels.ERROR
+      )
+    end
   )
 end
 
-local function notify_prompt_pass(name, result)
-  vim.notify(
-    ("pakku: %s verdict=prompt risk=%d caps=[%s] (gate=block allowed)"):format(
-      name,
-      result.risk_score or 0,
-      table.concat(result.capabilities or {}, ", ")
-    ),
-    vim.log.levels.WARN
+local function notify_prompt_pass(name, result, verbose)
+  if not verbose then return end
+  vim.schedule(
+    function()
+      vim.notify(
+        ("pakku: %s verdict=prompt risk=%d caps=[%s] (gate=block allowed)"):format(
+          name,
+          result.risk_score or 0,
+          table.concat(result.capabilities or {}, ", ")
+        ),
+        vim.log.levels.WARN
+      )
+    end
   )
 end
 
@@ -206,7 +219,9 @@ function M.add(specs)
           notify_blocked(e.pack.name, cached)
           unregister(e.pack.name)
         else
-          if cached.verdict == "prompt" then notify_prompt_pass(e.pack.name, cached) end
+          if cached.verdict == "prompt" then
+            notify_prompt_pass(e.pack.name, cached, scanner_cfg.verbose)
+          end
           if not e.lazy.is_lazy then table.insert(immediate_eager, e) end
         end
       else
@@ -241,7 +256,9 @@ function M.add(specs)
           unregister(d.entry.pack.name)
           return
         end
-        if result.verdict == "prompt" then notify_prompt_pass(d.entry.pack.name, result) end
+        if result.verdict == "prompt" then
+          notify_prompt_pass(d.entry.pack.name, result, scanner_cfg.verbose)
+        end
         if not d.entry.lazy.is_lazy then activate_eager(d.entry.lazy) end
       end
     )
