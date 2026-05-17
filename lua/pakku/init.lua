@@ -282,7 +282,10 @@ function M.clean(names)
   if not names or #names == 0 then
     return vim.notify("pakku: clean requires plugin names", vim.log.levels.WARN)
   end
-  vim.pack.del(names)
+  -- force=true allows removing plugins that have already been :packadd'd this
+  -- session. Without it vim.pack errors "Some plugins are active". Runtime
+  -- state for the removed plugin stays loaded until nvim restart.
+  vim.pack.del(names, { force = true })
 end
 
 function M.scan(name)
