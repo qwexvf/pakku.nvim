@@ -167,21 +167,63 @@ local function expand_imports(specs)
   return out
 end
 
+-- Merge fields from a later duplicate spec into the first occurrence.
+-- Later spec wins for non-nil fields (lazy.nvim convention). `src` and `name`
+-- are NEVER overwritten — the first occurrence pins identity.
+local function merge_into(existing, later)
+  local p, l = existing.pack, existing.lazy
+  if later.version ~= nil then p.version = coerce_version(later.version) end
+  if later.data ~= nil then p.data = later.data end
+
+  if later.opts ~= nil then
+    if type(l.opts) == "table" and type(later.opts) == "table" then
+      l.opts = vim.tbl_deep_extend("force", l.opts, later.opts)
+    else
+      l.opts = later.opts
+    end
+  end
+  if later.config ~= nil   then l.config   = later.config   end
+  if later.build ~= nil    then l.build    = later.build    end
+  if later.modname ~= nil  then l.modname  = later.modname  end
+  if later.priority ~= nil then l.priority = later.priority end
+
+  -- Triggers: later spec adds (not replaces). User's lualine listing
+  -- nvim-web-devicons as a dep shouldn't strip web-devicons' eager loading.
+  local function add_list(field, val)
+    if val == nil then return end
+    local cur = l[field]
+    local cur_t = (cur == nil) and {} or (type(cur) == "table" and cur or { cur })
+    local val_t = type(val) == "table" and val or { val }
+    for _, v in ipairs(val_t) do
+      local has = false
+      for _, e in ipairs(cur_t) do if e == v then has = true; break end end
+      if not has then table.insert(cur_t, v) end
+    end
+    l[field] = cur_t
+  end
+  add_list("event", later.event)
+  add_list("ft",    later.ft)
+  add_list("cmd",   later.cmd)
+  l.is_lazy = (l.event ~= nil) or (l.ft ~= nil) or (l.cmd ~= nil)
+end
+
 -- Flatten dependencies depth-first, dep before dependent.
 -- Returns ordered list of { pack_spec, lazy_spec } entries.
 function M.normalize(specs)
   local out = {}
-  local seen = {}
+  local seen = {}  -- name -> index into out
 
   local function visit(raw)
     raw = coerce(raw)
     if not raw.src then return end  -- pure-import or stripped node; skip
     local name = infer_name(raw.src, raw.name)
     if seen[name] then
-      vim.notify(("pakku: duplicate spec for %s, keeping first"):format(name), vim.log.levels.WARN)
+      -- Merge later-occurrence fields into first entry; do not register a
+      -- second copy. Source/name stay pinned to first sighting.
+      merge_into(out[seen[name]], raw)
+      vim.notify(("pakku: merged duplicate spec for %s"):format(name), vim.log.levels.DEBUG)
       return
     end
-    seen[name] = true
 
     local deps = coerce_deps(raw.dependencies)
     if deps then
@@ -190,6 +232,7 @@ function M.normalize(specs)
 
     local pack_spec, lazy_spec = split(raw)
     table.insert(out, { pack = pack_spec, lazy = lazy_spec })
+    seen[name] = #out
   end
 
   for _, raw in ipairs(expand_imports(specs)) do visit(raw) end
