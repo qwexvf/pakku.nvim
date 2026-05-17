@@ -60,10 +60,13 @@ local function coerce_deps(deps)
 end
 
 local function split(raw)
+  -- Map lazy.nvim's `branch` / `tag` / `commit` shorthand onto vim.pack's
+  -- single `version` field. Explicit `version` wins if set.
+  local version = raw.version or raw.commit or raw.tag or raw.branch
   local pack_spec = {
     src = raw.src,
     name = infer_name(raw.src, raw.name),
-    version = coerce_version(raw.version),
+    version = coerce_version(version),
     data = raw.data,
   }
   local lazy_spec = {
@@ -164,7 +167,8 @@ end
 -- Merge later-occurrence fields into the first entry. src/name pinned to first.
 local function merge_into(existing, later)
   local p, l = existing.pack, existing.lazy
-  if later.version ~= nil then p.version = coerce_version(later.version) end
+  local v = later.version or later.commit or later.tag or later.branch
+  if v ~= nil then p.version = coerce_version(v) end
   if later.data ~= nil then p.data = later.data end
   if later.opts ~= nil then
     l.opts = (type(l.opts) == "table" and type(later.opts) == "table")
