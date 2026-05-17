@@ -18,8 +18,12 @@ local defaults = {
   scanner = {
     enabled = false, bin = "aegis",
     on = { "install", "update" },
-    actions = true, sbom = true,
-    fail_on = nil, report_dir = nil,
+    analyze = true,     -- aegis analyze --ecosystem neovim (Lua AST capabilities)
+    actions = true,     -- aegis actions scan (GH Actions workflows)
+    sbom    = false,    -- aegis sbom (opt-in; low signal for pure-Lua plugins)
+    evidence = false,   -- include --evidence flag (file:line snippets in JSON)
+    fail_on = nil,      -- aegis --fail-on for actions: safe|review|prompt|block
+    report_dir = nil,
   },
   confirm_update = true,
 }
@@ -36,7 +40,7 @@ local function merge(into, from)
   end
 end
 
-local SUBS = { "ui", "status", "scan", "update", "review", "clean" }
+local SUBS = { "ui", "status", "scan", "update", "review", "profile", "clean" }
 
 function M.setup(opts)
   ensure_pack()
@@ -63,8 +67,9 @@ function M.setup(opts)
     elseif sub == "status" then M.status()
     elseif sub == "scan"   then M.scan(rest[1])
     elseif sub == "update" then M.update(rest)
-    elseif sub == "review" then M.review(rest)
-    elseif sub == "clean"  then M.clean(rest)
+    elseif sub == "review"  then M.review(rest)
+    elseif sub == "profile" then require("pakku.profile").show()
+    elseif sub == "clean"   then M.clean(rest)
     else vim.notify("pakku: unknown subcommand " .. sub, vim.log.levels.ERROR) end
   end, {
     nargs = "*",

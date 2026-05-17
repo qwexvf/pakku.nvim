@@ -64,10 +64,13 @@ Plus optional supply-chain scanning via aegis-cli.
                   ":TSUpdate"  -> ex-cmd
                   "make"       -> shell via sh -c
                   fn(ctx)      -> ctx = { path, spec }
-  event         string | string[], lazy-load on autocmd
+  event         string | string[], lazy-load on autocmd (VeryLazy supported)
   ft            string | string[], lazy-load on FileType
   cmd           string | string[], lazy-load on user command
+  keys          string | string[] | spec[], lazy-load on first keypress
+                  spec: { "<lhs>", mode = "n"|{"n","v"}, desc = "..." }
   dependencies  spec[], installed and loaded before this plugin
+  priority      number, higher loads first among eager specs (default 50)
 
 ==============================================================================
 5. COMMANDS                                              *pakku-commands*
@@ -81,8 +84,11 @@ Plus optional supply-chain scanning via aegis-cli.
   :Pakku review [name]       Fetch without applying; audit incoming diff for
                              force-pushes + tag drift. Floating buffer; q
                              closes.
+  :Pakku profile             Per-plugin load time chart (eager + lazy).
+                             Floating buffer; q closes.
   :Pakku clean <name>        Forward to vim.pack.del.
-  :Pakku scan [name]         Run aegis-cli on one or all plugins.
+  :Pakku scan [name]         Run aegis-cli on one or all plugins. Modes:
+                             analyze (Lua AST), actions (GH workflows), sbom.
 
 ==============================================================================
 6. SCANNER                                                *pakku-scanner*

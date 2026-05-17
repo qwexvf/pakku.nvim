@@ -64,10 +64,11 @@ local function split(raw)
     name = pack_spec.name,
     modname = infer_modname(pack_spec.name, raw.modname),
     opts = raw.opts, config = raw.config, build = raw.build,
-    event = raw.event, ft = raw.ft, cmd = raw.cmd,
+    event = raw.event, ft = raw.ft, cmd = raw.cmd, keys = raw.keys,
     priority = raw.priority,
   }
-  lazy_spec.is_lazy = (raw.event ~= nil) or (raw.ft ~= nil) or (raw.cmd ~= nil)
+  lazy_spec.is_lazy = (raw.event ~= nil) or (raw.ft ~= nil)
+                      or (raw.cmd ~= nil) or (raw.keys ~= nil)
   return pack_spec, lazy_spec
 end
 
@@ -154,7 +155,18 @@ local function merge_into(existing, later)
   add_list(l, "event", later.event)
   add_list(l, "ft",    later.ft)
   add_list(l, "cmd",   later.cmd)
-  l.is_lazy = (l.event ~= nil) or (l.ft ~= nil) or (l.cmd ~= nil)
+  if later.keys ~= nil then
+    l.keys = l.keys or {}
+    local list = type(later.keys) == "table" and later.keys or { later.keys }
+    -- Accept lazy.nvim shape; we don't try to dedup precisely (keys can be
+    -- table entries with overlapping lhs but different modes).
+    if type(list[1]) == "string" or not list[1] then list = { list } end
+    for _, k in ipairs(type(later.keys) == "table" and later.keys or { later.keys }) do
+      table.insert(l.keys, k)
+    end
+  end
+  l.is_lazy = (l.event ~= nil) or (l.ft ~= nil)
+              or (l.cmd ~= nil) or (l.keys ~= nil)
 end
 
 -- Flatten + dedupe. Returns ordered { pack, lazy } entries; deps emitted before

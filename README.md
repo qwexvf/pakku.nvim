@@ -66,6 +66,11 @@ require("pakku").add({
   -- lazy by command
   { src = "https://github.com/stevearc/oil.nvim", cmd = "Oil", opts = {} },
 
+  -- lazy by keypress (lazy.nvim parity)
+  { src = "https://github.com/folke/trouble.nvim",
+    keys = { { "<leader>xx", mode = "n", desc = "Trouble" } },
+    opts = {} },
+
   -- lazy by event, with build step + deps
   {
     src = "https://github.com/nvim-treesitter/nvim-treesitter",
@@ -93,8 +98,9 @@ Superset of `vim.pack`'s spec:
 | `opts`         | table                             | Passed to `require(modname).setup(opts)`. |
 | `config`       | function                          | Called instead of `opts` if both present. |
 | `build`        | string \| function                | `:TSUpdate` (ex-cmd) \| `"make"` (shell) \| `fn(ctx)`. |
-| `event`        | string \| string[]                | Lazy-load on autocmd. |
+| `event`        | string \| string[]                | Lazy-load on autocmd. `VeryLazy` fires post-`VimEnter`. |
 | `ft`           | string \| string[]                | Lazy-load on FileType. |
+| `keys`         | string \| string[] \| spec[]      | Lazy-load on first keypress. Spec: `{ "<lhs>", mode = "n"\|{...}, desc = "..." }`. |
 | `cmd`          | string \| string[]                | Lazy-load on user command (shim auto-installed). |
 | `dependencies` | spec[]                            | Installed and loaded before this plugin. |
 
@@ -106,6 +112,7 @@ Superset of `vim.pack`'s spec:
 | `:Pakku status`           | Plain-text fleet summary via `vim.notify` (no UI). |
 | `:Pakku update [name]`    | Forward to `vim.pack.update`. |
 | `:Pakku review [name]`    | Fetch without applying; audit incoming diff for force-pushes + tag drift. Renders report in floating buffer. Press `q` to close. |
+| `:Pakku profile`          | Per-plugin load time chart (eager + lazy) in a floating buffer. |
 | `:Pakku clean <name>`     | Forward to `vim.pack.del`. |
 | `:Pakku scan [name]`      | Run aegis-cli over one or all plugins. |
 
@@ -163,27 +170,53 @@ filesystem activity.
 
 ## Scanner
 
-When `scanner.enabled = true`, pakku runs two aegis-cli subcommands per
-install/update event:
+When `scanner.enabled = true`, pakku invokes up to three aegis-cli
+subcommands per install/update event (each toggleable):
 
-1. `aegis actions scan <path>` — flags malicious GitHub Actions workflows
-   shipped inside the plugin repo.
-2. `aegis sbom --local <path>` — emits a CycloneDX SBOM to
-   `stdpath('state')/pakku/scans/<name>.cdx.json`. Plugins that bundle
-   manifest-bearing deps (e.g. `go.nvim` has `go.mod`, `blink.cmp` has Cargo
-   workspaces) get real CVE coverage via aegis's lockfile parsers.
+1. **`aegis analyze --ecosystem neovim <path> --json`** — Lua AST capability
+   scan via tree-sitter. Flags `shell-spawn` (`os.execute`, `vim.fn.system`,
+   `vim.fn.jobstart`), `dynamic-eval` (`loadstring`, `vim.api.nvim_exec`),
+   `net-egress` (`vim.uv.new_tcp`, `socket.http`), `env-read`, `fs-write`,
+   `install-hook-exec` (`ffi.load`), `raw-ip-literal`, `binary-dropper`.
+   Emits per-plugin `verdict` (`safe`/`review`/`prompt`/`block`),
+   `risk_score`, and `capabilities`. Requires aegis ≥ v0.27 (Lua scanner
+   shipped in `feat(neovim)`).
+2. **`aegis actions scan <path> --json`** — flags malicious GitHub Actions
+   workflows shipped inside the plugin repo.
+3. **`aegis sbom --local <path>`** — opt-in CycloneDX inventory. Only useful
+   for plugins bundling manifest-bearing deps (`go.nvim` has `go.mod`,
+   `blink.cmp` has Cargo workspaces). Off by default.
 
-### Honest limitation
+Reports written to `stdpath('state')/pakku/scans/<name>.{analyze,actions}.json`.
 
-aegis-cli does **not** AST-scan Lua. Pure-Lua plugins get an SBOM with no
-dependency rows and no capability findings. **Review Lua plugin source
-yourself.** pakku's scanner catches:
+### Severity → log level
 
-- malicious GH Actions workflows in any plugin repo;
-- vulnerable transitive deps in plugins that ship a `Cargo.lock`, `go.sum`,
-  `package-lock.json`, etc.
+| aegis verdict | `vim.notify` level |
+|---------------|--------------------|
+| `safe`        | INFO               |
+| `review`      | INFO               |
+| `prompt`      | WARN               |
+| `block`       | ERROR              |
 
-It does not catch a backdoored `lua/foo.lua`. No tool advertised here does.
+### Setup config
+
+```lua
+scanner = {
+  enabled  = true,
+  bin      = "aegis",
+  on       = { "install", "update" },  -- when to auto-scan
+  analyze  = true,                     -- Lua AST capability scan
+  actions  = true,                     -- GH Actions workflow scan
+  sbom     = false,                    -- CycloneDX (opt-in)
+  evidence = false,                    -- include --evidence (file:line snippets)
+  fail_on  = nil,                      -- aegis --fail-on for actions
+}
+```
+
+### Manual
+
+`:Pakku scan` runs the configured scanners over every installed plugin.
+`:Pakku scan <name>` targets one.
 
 ## Lockfile
 

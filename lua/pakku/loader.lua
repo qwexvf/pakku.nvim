@@ -3,7 +3,11 @@ local M = {
   pending = {},  -- name -> lazy_spec (awaiting trigger)
   active  = {},  -- name -> true
   by_name = {},  -- name -> lazy_spec (all specs)
+  times   = {},  -- name -> { ms = N, kind = "eager"|"lazy" } load timing
 }
+
+local _hrtime = (vim.uv or vim.loop).hrtime
+local function elapsed_ms(t0) return (_hrtime() - t0) / 1e6 end
 
 local group = vim.api.nvim_create_augroup("pakku.loader", { clear = true })
 
@@ -51,14 +55,18 @@ function M.load(name)
   if not spec then return end
   M.pending[name] = nil
   M.active[name] = true
+  local t0 = _hrtime()
   local ok, e = pcall(vim.cmd, "packadd " .. name)
   if not ok then return err("packadd %s failed: %s", name, e) end
   apply_config(spec)
+  M.times[name] = { ms = elapsed_ms(t0), kind = "lazy" }
 end
 
 function M.apply(spec)  -- eager: vim.pack already packadd'd; just config
   M.active[spec.name] = true
+  local t0 = _hrtime()
   apply_config(spec)
+  M.times[spec.name] = { ms = elapsed_ms(t0), kind = "eager" }
 end
 
 local function as_list(v) return type(v) == "table" and v or { v } end
@@ -68,6 +76,30 @@ local function on_event(name, events, pattern, ev)
     group = group, once = true, pattern = pattern,
     callback = function() M.load(name) end,
   })
+end
+
+-- Normalize lazy.nvim-style `keys` field into list of { lhs, modes }.
+-- Accepts:  "<leader>x"
+--           { "<leader>x", "<leader>y" }
+--           { { "<leader>x", mode = "n", desc = "..." }, ... }
+local function normalize_keys(keys)
+  if type(keys) == "string" then return { { lhs = keys, modes = { "n" } } } end
+  if type(keys) ~= "table" then return {} end
+  local out = {}
+  for _, k in ipairs(keys) do
+    if type(k) == "string" then
+      table.insert(out, { lhs = k, modes = { "n" } })
+    elseif type(k) == "table" then
+      local lhs = k.lhs or k[1]
+      if lhs then
+        local m = k.mode
+        if m == nil then m = { "n" }
+        elseif type(m) == "string" then m = { m } end
+        table.insert(out, { lhs = lhs, modes = m })
+      end
+    end
+  end
+  return out
 end
 
 function M.register(spec)
@@ -105,6 +137,23 @@ function M.register(spec)
       end, { nargs = "*", range = true, bang = true, complete = "file" })
     end
   end
+
+  if spec.keys then
+    for _, k in ipairs(normalize_keys(spec.keys)) do
+      local lhs, modes = k.lhs, k.modes
+      for _, mode in ipairs(modes) do
+        vim.keymap.set(mode, lhs, function()
+          -- Remove shim from every mode before re-feeding so the plugin's
+          -- real keymap (installed by apply_config) handles the keypress.
+          for _, m in ipairs(modes) do pcall(vim.keymap.del, m, lhs) end
+          M.load(name)
+          vim.api.nvim_feedkeys(
+            vim.api.nvim_replace_termcodes(lhs, true, false, true), "m", false)
+        end, { silent = true, desc = "pakku-lazy: " .. name })
+      end
+    end
+  end
+
   return true
 end
 
