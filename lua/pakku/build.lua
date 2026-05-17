@@ -24,10 +24,17 @@ local function run_build(spec, path)
   end
   if type(b) ~= "string" then return end
   if b:sub(1, 1) == ":" then
-    local ok, err = pcall(vim.cmd, b:sub(2))
-    if not ok then
-      vim.notify(("pakku: build ex-cmd error for %s: %s"):format(spec.name, err), vim.log.levels.ERROR)
-    end
+    -- Ex-cmd build (e.g. ":TSUpdate") needs the plugin's runtime files sourced
+    -- first or the user-command doesn't exist yet. vim.pack has just checked
+    -- out the new rev; packadd loads it. Defer via vim.schedule so the
+    -- PackChanged autocmd unwinds before we issue more vim.cmd calls.
+    vim.schedule(function()
+      pcall(vim.cmd, "packadd " .. spec.name)
+      local ok, err = pcall(vim.cmd, b:sub(2))
+      if not ok then
+        vim.notify(("pakku: build ex-cmd error for %s: %s"):format(spec.name, err), vim.log.levels.ERROR)
+      end
+    end)
   else
     run_shell(b, path, spec.name)
   end

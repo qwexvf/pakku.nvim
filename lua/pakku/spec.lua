@@ -66,11 +66,22 @@ local function coerce_deps(deps)
   return out
 end
 
+-- vim.pack accepts: tag/branch/sha strings OR vim.version.range() output.
+-- lazy.nvim users write `version = "*"` or `version = "^1"` as string.
+-- Coerce semver-range strings into vim.version.range; pass tag-looking strings through.
+local function coerce_version(v)
+  if v == nil or type(v) ~= "string" then return v end
+  if v == "*" or v:match("^[%^~]") or v:match("^[<>=]") then
+    return vim.version.range(v)
+  end
+  return v  -- tag, branch, or sha; vim.pack handles literally
+end
+
 local function split(raw)
   local pack_spec = {
     src = raw.src,
     name = infer_name(raw.src, raw.name),
-    version = raw.version,
+    version = coerce_version(raw.version),
     data = raw.data,
   }
   local lazy_spec = {
