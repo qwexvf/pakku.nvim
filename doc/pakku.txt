@@ -72,7 +72,11 @@ Plus optional supply-chain scanning via aegis-cli.
 ==============================================================================
 5. COMMANDS                                              *pakku-commands*
 
-  :Pakku status              Active vs pending plugins.
+  :Pakku                     Open the floating dashboard (alias :Pakku ui).
+                             Keymaps: q close, R refresh, <CR> toggle detail,
+                             U update under cursor, V review under cursor,
+                             X clean under cursor, H/L tab nav, ? help.
+  :Pakku status              Plain-text fleet summary (no UI).
   :Pakku update [name]       Forward to vim.pack.update.
   :Pakku review [name]       Fetch without applying; audit incoming diff for
                              force-pushes + tag drift. Floating buffer; q

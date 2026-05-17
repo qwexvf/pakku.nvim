@@ -82,7 +82,9 @@ function M.setup(opts)
   vim.api.nvim_create_user_command("Pakku", function(args)
     local sub = args.fargs[1]
     local rest = vim.list_slice(args.fargs, 2)
-    if sub == "status" or sub == nil then
+    if sub == nil or sub == "ui" then
+      require("pakku.ui").open()
+    elseif sub == "status" then
       M.status()
     elseif sub == "scan" then
       M.scan(rest[1])
@@ -98,7 +100,7 @@ function M.setup(opts)
   end, {
     nargs = "*",
     complete = function(arglead, line)
-      local subs = { "status", "scan", "update", "review", "clean" }
+      local subs = { "ui", "status", "scan", "update", "review", "clean" }
       if line:match("^Pakku%s+%S*$") then
         return vim.tbl_filter(function(s) return s:find(arglead, 1, true) == 1 end, subs)
       end

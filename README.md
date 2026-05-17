@@ -102,11 +102,28 @@ Superset of `vim.pack`'s spec:
 
 | Command | Description |
 |---------|-------------|
-| `:Pakku status`           | List installed plugins + active/pending state. |
+| `:Pakku` / `:Pakku ui`    | Open the floating dashboard (sections, cursor-action keys, live refresh). |
+| `:Pakku status`           | Plain-text fleet summary via `vim.notify` (no UI). |
 | `:Pakku update [name]`    | Forward to `vim.pack.update`. |
 | `:Pakku review [name]`    | Fetch without applying; audit incoming diff for force-pushes + tag drift. Renders report in floating buffer. Press `q` to close. |
 | `:Pakku clean <name>`     | Forward to `vim.pack.del`. |
 | `:Pakku scan [name]`      | Run aegis-cli over one or all plugins. |
+
+### UI keymaps
+
+| Key      | Action                                              |
+|----------|-----------------------------------------------------|
+| `q`      | close                                               |
+| `R`      | refresh                                             |
+| `<CR>`   | toggle plugin detail (src / rev / version / triggers / build) |
+| `U`      | update plugin under cursor                          |
+| `V`      | review (audit) plugin under cursor                  |
+| `X`      | clean plugin under cursor (confirm prompt)          |
+| `H` / `L`| previous / next tab (Home / Update / Clean / Log)   |
+| `?`      | help                                                |
+
+The Update / Clean / Log tabs are placeholders in v1 — use the corresponding
+`:Pakku <cmd>` invocations from the command line.
 
 `:checkhealth pakku` reports environment.
 
