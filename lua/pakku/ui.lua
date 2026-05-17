@@ -1,7 +1,5 @@
--- pakku floating UI — lazy.nvim-parity dashboard.
--- Home tab: Loaded / Pending / Unmanaged sections, expandable rows.
--- Cursor actions: U update, V review, X clean. R refresh. <CR> toggle detail.
--- Update/Clean/Log tabs reserved (use :Pakku <cmd> from CLI for now).
+-- pakku floating UI — dashboard with sections, expandable rows, live refresh.
+-- Cursor actions: u single, U all, v single review, V all review, x single clean.
 local M = {}
 
 local TABS = { "Home", "Update", "Clean", "Log" }
@@ -18,7 +16,15 @@ local SECTIONS = {
   { name = "Unmanaged", key = "unmanaged", hl = "PakkuUnmanaged" },
 }
 
-local state = { buf = nil, win = nil, tab = "Home", expanded = {}, row_map = {} }
+local state = {
+  buf = nil,
+  win = nil,
+  width = 80,
+  tab = "Home",
+  expanded = {},
+  row_map = {},
+  status = nil, -- one-line status message (e.g. "updating 3/26")
+}
 local ns = vim.api.nvim_create_namespace("pakku.ui")
 
 local function host_of(src)
@@ -39,6 +45,14 @@ local function get_plugins()
   return plugins
 end
 
+local function counts(plugins)
+  local c = { active = 0, pending = 0, unmanaged = 0 }
+  for _, p in ipairs(plugins) do
+    c[p._st] = (c[p._st] or 0) + 1
+  end
+  return c
+end
+
 local function render_home(plugins)
   local lines, hl, row_map = {}, {}, {}
   local function emit(line, group)
@@ -47,65 +61,83 @@ local function render_home(plugins)
     return #lines
   end
 
+  local rule = string.rep("─", state.width - 2)
+  local first_section = true
+
   for _, sec in ipairs(SECTIONS) do
     local matches = vim.tbl_filter(function(p) return p._st == sec.key end, plugins)
     if #matches > 0 then
-      emit(("── %s (%d)"):format(sec.name, #matches), "PakkuSection")
+      if not first_section then emit("") end
+      first_section = false
+      emit(("  %s %s   %d"):format(ICONS[sec.key], sec.name, #matches), sec.hl)
+      emit("  " .. rule, "PakkuDetail")
       for _, p in ipairs(matches) do
         local exp = state.expanded[p.spec.name] and ICONS.expanded or ICONS.collapsed
-        local row = emit(
-          ("  %s %s  %-28s %-10s %s"):format(
-            exp,
-            ICONS[sec.key],
-            p.spec.name,
-            (p.rev or ""):sub(1, 8),
-            host_of(p.spec.src)
-          ),
-          sec.hl
-        )
+        local rev = (p.rev or ""):sub(1, 8)
+        local row =
+          emit(("  %s %-30s  %s  %s"):format(exp, p.spec.name, rev, host_of(p.spec.src)), sec.hl)
         row_map[row] = p.spec.name
 
         if state.expanded[p.spec.name] then
           local lz = p._lazy or {}
-          local function detail(k, v) emit(("      %-9s %s"):format(k .. ":", v), "PakkuDetail") end
+          local function detail(k, v) emit(("        %-9s %s"):format(k, v), "PakkuDetail") end
           detail("src", p.spec.src or "?")
           detail("rev", p.rev or "?")
           if p.spec.version then detail("version", tostring(p.spec.version)) end
           if lz.event then detail("event", vim.inspect(lz.event)) end
           if lz.ft then detail("ft", vim.inspect(lz.ft)) end
           if lz.cmd then detail("cmd", vim.inspect(lz.cmd)) end
+          if lz.keys then detail("keys", vim.inspect(lz.keys)) end
           if lz.build then detail("build", tostring(lz.build)) end
           if lz.priority then detail("priority", tostring(lz.priority)) end
         end
       end
-      emit("")
     end
   end
   if #plugins == 0 then emit("  (no plugins managed)", "PakkuDetail") end
   return lines, hl, row_map
 end
 
-local function render_lines()
-  local lines, hl, row_map = {}, {}, {}
+local function header_line(plugins)
+  local c = counts(plugins)
+  local total = c.active + c.pending + c.unmanaged
+  return ("  %d total   %d loaded   %d pending"):format(total, c.active, c.pending)
+end
 
-  -- Tab strip
+local function tab_strip()
   local parts = {}
   for _, t in ipairs(TABS) do
     table.insert(parts, t == state.tab and ("[" .. t .. "]") or (" " .. t .. " "))
   end
-  table.insert(lines, "  " .. table.concat(parts, "  "))
+  return "  " .. table.concat(parts, " ")
+end
+
+local function render_lines()
+  local lines, hl, row_map = {}, {}, {}
+  local plugins = get_plugins()
+  local rule = string.rep("─", state.width - 2)
+
+  table.insert(lines, tab_strip())
   table.insert(hl, { row = #lines, group = "PakkuTabs" })
-  table.insert(lines, string.rep("─", 80))
+  table.insert(lines, "")
+  table.insert(lines, header_line(plugins))
+  table.insert(hl, { row = #lines, group = "PakkuHeader" })
+  table.insert(lines, "  " .. rule)
+  table.insert(hl, { row = #lines, group = "PakkuDetail" })
   table.insert(lines, "")
 
   local body, body_hl, body_rows
   if state.tab == "Home" then
-    body, body_hl, body_rows = render_home(get_plugins())
+    body, body_hl, body_rows = render_home(plugins)
   else
-    body =
-      { "", "  " .. state.tab .. " tab — use :Pakku " .. state.tab:lower() .. " from CLI", "" }
+    body = {
+      "",
+      "  " .. state.tab .. " tab — use :Pakku " .. state.tab:lower() .. " from CLI",
+      "",
+    }
     body_hl, body_rows = {}, {}
   end
+
   local offset = #lines
   for _, l in ipairs(body) do
     table.insert(lines, l)
@@ -116,11 +148,20 @@ local function render_lines()
   for r, n in pairs(body_rows) do
     row_map[r + offset] = n
   end
+
+  if state.status then
+    table.insert(lines, "")
+    table.insert(lines, "  " .. state.status)
+    table.insert(hl, { row = #lines, group = "PakkuHeader" })
+  end
   return lines, hl, row_map
 end
 
 local function refresh()
   if not (state.buf and vim.api.nvim_buf_is_valid(state.buf)) then return end
+  if state.win and vim.api.nvim_win_is_valid(state.win) then
+    state.width = vim.api.nvim_win_get_width(state.win)
+  end
   local lines, hl, row_map = render_lines()
   vim.bo[state.buf].modifiable = true
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
@@ -152,6 +193,38 @@ local function cycle(delta)
   end
 end
 
+local function set_status(msg)
+  state.status = msg
+  refresh()
+end
+
+-- Async update. vim.pack.update is internally blocking on git fetch, but we
+-- wrap in vim.schedule + confirm=false so the UI redraws first and avoids the
+-- confirm buffer. PackChanged callbacks live-refresh per plugin.
+local function update_all()
+  set_status("updating all plugins…")
+  vim.schedule(function()
+    local ok, err = pcall(function() vim.pack.update(nil, { confirm = false }) end)
+    if not ok then
+      set_status("update failed: " .. tostring(err))
+    else
+      set_status(nil)
+    end
+  end)
+end
+
+local function update_one(name)
+  set_status("updating " .. name .. "…")
+  vim.schedule(function()
+    local ok, err = pcall(function() vim.pack.update({ name }, { confirm = false }) end)
+    if not ok then
+      set_status("update failed: " .. tostring(err))
+    else
+      set_status(nil)
+    end
+  end)
+end
+
 local function setup_hl()
   local function defhl(n, a)
     if vim.fn.hlexists(n) == 0 then vim.api.nvim_set_hl(0, n, a) end
@@ -162,6 +235,7 @@ local function setup_hl()
   defhl("PakkuSection", { link = "Title" })
   defhl("PakkuDetail", { link = "Comment" })
   defhl("PakkuTabs", { link = "Statement" })
+  defhl("PakkuHeader", { link = "Title" })
 end
 
 local function setup_keys(buf)
@@ -182,15 +256,21 @@ local function setup_keys(buf)
       refresh()
     end
   end, "toggle detail")
-  map("U", function()
+
+  -- u: single update; U: update all (async, no blocking confirm buffer).
+  map("u", function()
     local n = at_cursor()
-    if n then require("pakku").update({ n }) end
-  end, "update")
-  map("V", function()
+    if n then update_one(n) end
+  end, "update under cursor")
+  map("U", update_all, "update all async")
+
+  map("v", function()
     local n = at_cursor()
     if n then require("pakku").review({ n }) end
-  end, "review")
-  map("X", function()
+  end, "review under cursor")
+  map("V", function() require("pakku").review(nil) end, "review all")
+
+  map("x", function()
     local n = at_cursor()
     if not n then return end
     vim.ui.select({ "Yes", "No" }, { prompt = "Clean " .. n .. "?" }, function(c)
@@ -199,7 +279,8 @@ local function setup_keys(buf)
         refresh()
       end
     end)
-  end, "clean")
+  end, "clean under cursor")
+
   map("L", function() cycle(1) end, "next tab")
   map("H", function() cycle(-1) end, "prev tab")
   map("?", function() M.help() end, "help")
@@ -227,12 +308,13 @@ function M.open()
     row = math.floor((vim.o.lines - h) / 2),
     col = math.floor((vim.o.columns - w) / 2),
     border = "rounded",
-    title = " pakku  (? for help) ",
+    title = " pakku  ? for keys ",
     title_pos = "center",
     style = "minimal",
   })
   vim.wo[state.win].cursorline = true
   vim.wo[state.win].wrap = false
+  vim.wo[state.win].signcolumn = "no"
   refresh()
 end
 
@@ -240,7 +322,7 @@ function M.close()
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_close(state.win, true)
   end
-  state.win, state.buf = nil, nil
+  state.win, state.buf, state.status = nil, nil, nil
 end
 
 function M.help()
@@ -250,9 +332,9 @@ function M.help()
     "  q        close",
     "  R        refresh",
     "  <CR>     toggle plugin detail",
-    "  U        update under cursor",
-    "  V        review under cursor (audit incoming diff)",
-    "  X        clean under cursor",
+    "  u  / U   update under cursor / update ALL (async)",
+    "  v  / V   review under cursor / review ALL",
+    "  x        clean under cursor",
     "  H / L    previous / next tab",
     "  ?        this help",
   }, "\n"))
