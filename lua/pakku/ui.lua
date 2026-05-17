@@ -229,8 +229,10 @@ local function setup_hl()
   local function defhl(n, a)
     if vim.fn.hlexists(n) == 0 then vim.api.nvim_set_hl(0, n, a) end
   end
-  defhl("PakkuActive", { link = "DiagnosticOk" })
-  defhl("PakkuPending", { link = "DiagnosticHint" })
+  -- Link to base groups that every colorscheme defines. DiagnosticOk in
+  -- particular is often missing from user-defined themes — avoid it.
+  defhl("PakkuActive", { link = "Function" })
+  defhl("PakkuPending", { link = "Special" })
   defhl("PakkuUnmanaged", { link = "Comment" })
   defhl("PakkuSection", { link = "Title" })
   defhl("PakkuDetail", { link = "Comment" })
