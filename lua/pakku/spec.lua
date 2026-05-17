@@ -1,4 +1,4 @@
--- spec normalization + dep flattening for packline
+-- spec normalization + dep flattening for pakku
 local M = {}
 
 local LAZY_FIELDS = { event = true, ft = true, cmd = true }
@@ -50,10 +50,10 @@ function M.normalize(specs)
 
   local function visit(raw)
     if type(raw) == "string" then raw = { src = raw } end
-    assert(raw.src, "packline: spec missing `src`")
+    assert(raw.src, "pakku: spec missing `src`")
     local name = infer_name(raw.src, raw.name)
     if seen[name] then
-      vim.notify(("packline: duplicate spec for %s, keeping first"):format(name), vim.log.levels.WARN)
+      vim.notify(("pakku: duplicate spec for %s, keeping first"):format(name), vim.log.levels.WARN)
       return
     end
     seen[name] = true

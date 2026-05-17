@@ -1,20 +1,20 @@
-*packline.txt*  Thin DX layer over vim.pack
+*pakku.txt*  Thin DX layer over vim.pack
 
 ==============================================================================
-CONTENTS                                                  *packline-contents*
+CONTENTS                                                  *pakku-contents*
 
-  1. Overview ................................. |packline-overview|
-  2. Requirements ............................. |packline-requirements|
-  3. Setup .................................... |packline-setup|
-  4. Spec format .............................. |packline-spec|
-  5. Commands ................................. |packline-commands|
-  6. Scanner .................................. |packline-scanner|
-  7. Health ................................... |packline-health|
+  1. Overview ................................. |pakku-overview|
+  2. Requirements ............................. |pakku-requirements|
+  3. Setup .................................... |pakku-setup|
+  4. Spec format .............................. |pakku-spec|
+  5. Commands ................................. |pakku-commands|
+  6. Scanner .................................. |pakku-scanner|
+  7. Health ................................... |pakku-health|
 
 ==============================================================================
-1. OVERVIEW                                               *packline-overview*
+1. OVERVIEW                                               *pakku-overview*
 
-packline.nvim wraps |vim.pack| with four ergonomics:
+pakku.nvim wraps |vim.pack| with four ergonomics:
 
   - lazy-load triggers (event/ft/cmd)
   - build hooks driven by |PackChanged|
@@ -26,16 +26,16 @@ Plus optional supply-chain scanning via aegis-cli.
 |vim.pack| keeps owning installs, updates, and the lockfile.
 
 ==============================================================================
-2. REQUIREMENTS                                       *packline-requirements*
+2. REQUIREMENTS                                       *pakku-requirements*
 
   - Neovim 0.12+
   - aegis-cli on PATH (optional, for scanning)
 
 ==============================================================================
-3. SETUP                                                     *packline-setup*
+3. SETUP                                                     *pakku-setup*
 
 >lua
-    require("packline").setup({
+    require("pakku").setup({
       scanner = {
         enabled = true,
         bin = "aegis",
@@ -46,13 +46,13 @@ Plus optional supply-chain scanning via aegis-cli.
       },
     })
 
-    require("packline").add({
+    require("pakku").add({
       { src = "https://github.com/folke/lazydev.nvim", ft = "lua", opts = {} },
     })
 <
 
 ==============================================================================
-4. SPEC FORMAT                                                *packline-spec*
+4. SPEC FORMAT                                                *pakku-spec*
 
   src           string, required, git URL
   name          string, defaults to repo basename
@@ -70,24 +70,24 @@ Plus optional supply-chain scanning via aegis-cli.
   dependencies  spec[], installed and loaded before this plugin
 
 ==============================================================================
-5. COMMANDS                                              *packline-commands*
+5. COMMANDS                                              *pakku-commands*
 
-  :Packline status              Active vs pending plugins.
-  :Packline update [name]       Forward to vim.pack.update.
-  :Packline clean <name>        Forward to vim.pack.del.
-  :Packline scan [name]         Run aegis-cli on one or all plugins.
+  :Pakku status              Active vs pending plugins.
+  :Pakku update [name]       Forward to vim.pack.update.
+  :Pakku clean <name>        Forward to vim.pack.del.
+  :Pakku scan [name]         Run aegis-cli on one or all plugins.
 
 ==============================================================================
-6. SCANNER                                                *packline-scanner*
+6. SCANNER                                                *pakku-scanner*
 
 Scanner runs aegis-cli over each plugin path. aegis does NOT AST-scan Lua;
 it covers GitHub Actions workflows and manifest-bearing transitive deps.
 Pure-Lua plugins produce empty SBOMs. Review Lua source yourself.
 
 ==============================================================================
-7. HEALTH                                                  *packline-health*
+7. HEALTH                                                  *pakku-health*
 
-`:checkhealth packline` reports Neovim version, vim.pack presence, lockfile
+`:checkhealth pakku` reports Neovim version, vim.pack presence, lockfile
 location, aegis availability, and report directory.
 
  vim:tw=78:ts=8:ft=help:norl:

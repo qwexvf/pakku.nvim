@@ -2,7 +2,7 @@ local M = {}
 
 function M.check()
   local h = vim.health
-  h.start("packline")
+  h.start("pakku")
 
   local v = vim.version()
   if v.major == 0 and v.minor < 12 then
@@ -24,10 +24,10 @@ function M.check()
     h.warn("lockfile not yet present at " .. lockfile)
   end
 
-  local pkl = package.loaded["packline"]
+  local pkl = package.loaded["pakku"]
   local cfg = pkl and pkl._state and pkl._state.config or nil
   if not cfg then
-    h.warn("packline.setup() not called yet")
+    h.warn("pakku.setup() not called yet")
     return
   end
 

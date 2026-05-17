@@ -1,12 +1,12 @@
--- packline: thin DX layer over vim.pack
+-- pakku: thin DX layer over vim.pack
 -- Public API: setup, add, update, scan, status, clean
 local M = {}
 
-local Spec = require("packline.spec")
-local Loader = require("packline.loader")
-local Build = require("packline.build")
-local Scanner = require("packline.scanner")
-local Policy = require("packline.policy")
+local Spec = require("pakku.spec")
+local Loader = require("pakku.loader")
+local Build = require("pakku.build")
+local Scanner = require("pakku.scanner")
+local Policy = require("pakku.policy")
 
 local defaults = {
   performance = {
@@ -26,7 +26,7 @@ local defaults = {
     actions = true,
     sbom = true,
     fail_on = nil,    -- aegis --fail-on: safe|review|prompt|block
-    report_dir = nil, -- defaults to stdpath('state')/packline/scans
+    report_dir = nil, -- defaults to stdpath('state')/pakku/scans
   },
   confirm_update = true,  -- forward to vim.pack.update
 }
@@ -37,7 +37,7 @@ local state = {
 
 local function ensure_pack()
   if not vim.pack then
-    error("packline: vim.pack missing — requires Neovim 0.12+")
+    error("pakku: vim.pack missing — requires Neovim 0.12+")
   end
 end
 
@@ -55,7 +55,7 @@ function M.setup(opts)
   ensure_pack()
   merge(state.config, opts or {})
   if state.config.scanner.report_dir == nil then
-    state.config.scanner.report_dir = vim.fs.joinpath(vim.fn.stdpath("state"), "packline", "scans")
+    state.config.scanner.report_dir = vim.fs.joinpath(vim.fn.stdpath("state"), "pakku", "scans")
   end
   -- vim.loader caches compiled Lua bytecode; ~10-30ms cold start win per plugin.
   if state.config.performance.loader and vim.loader and not vim.loader.enabled then
@@ -64,7 +64,7 @@ function M.setup(opts)
   -- Build.attach uses an augroup with clear=true, so calling repeatedly is safe.
   Build.attach(state.config)
 
-  vim.api.nvim_create_user_command("Packline", function(args)
+  vim.api.nvim_create_user_command("Pakku", function(args)
     local sub = args.fargs[1]
     local rest = vim.list_slice(args.fargs, 2)
     if sub == "status" or sub == nil then
@@ -76,13 +76,13 @@ function M.setup(opts)
     elseif sub == "clean" then
       M.clean(rest)
     else
-      vim.notify("packline: unknown subcommand " .. sub, vim.log.levels.ERROR)
+      vim.notify("pakku: unknown subcommand " .. sub, vim.log.levels.ERROR)
     end
   end, {
     nargs = "*",
     complete = function(arglead, line)
       local subs = { "status", "scan", "update", "clean" }
-      if line:match("^Packline%s+%S*$") then
+      if line:match("^Pakku%s+%S*$") then
         return vim.tbl_filter(function(s) return s:find(arglead, 1, true) == 1 end, subs)
       end
       local names = {}
@@ -134,7 +134,7 @@ end
 function M.clean(names)
   ensure_pack()
   if not names or #names == 0 then
-    vim.notify("packline: clean requires plugin names", vim.log.levels.WARN)
+    vim.notify("pakku: clean requires plugin names", vim.log.levels.WARN)
     return
   end
   vim.pack.del(names)
@@ -144,7 +144,7 @@ function M.scan(name)
   if name then
     local plugins = vim.pack.get({ name })
     if #plugins == 0 then
-      vim.notify("packline: no installed plugin named " .. name, vim.log.levels.WARN)
+      vim.notify("pakku: no installed plugin named " .. name, vim.log.levels.WARN)
       return
     end
     local p = plugins[1]
@@ -155,7 +155,7 @@ function M.scan(name)
 end
 
 function M.status()
-  local lines = { "packline status:" }
+  local lines = { "pakku status:" }
   local plugins = vim.pack.get()
   table.sort(plugins, function(a, b) return a.spec.name < b.spec.name end)
   for _, p in ipairs(plugins) do

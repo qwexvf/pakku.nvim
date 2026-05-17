@@ -1,10 +1,10 @@
-# packline.nvim
+# pakku.nvim
 
 Performance- and security-focused plugin manager built on Neovim 0.12's
 `vim.pack`.
 
 `vim.pack` ships installs, updates, lockfile (`nvim-pack-lock.json`), semver,
-and `PackChanged` events. packline adds the missing pieces on top:
+and `PackChanged` events. pakku adds the missing pieces on top:
 
 **DX layer**
 - lazy-load triggers (event/ft/cmd)
@@ -39,9 +39,9 @@ Pre-release. Single user (me). API may break.
 
 ```lua
 -- in init.lua
-vim.pack.add({ { src = "https://github.com/qwexvf/packline.nvim" } })
+vim.pack.add({ { src = "https://github.com/qwexvf/pakku.nvim" } })
 
-require("packline").setup({
+require("pakku").setup({
   performance = {
     loader = true,                -- vim.loader.enable()
   },
@@ -56,7 +56,7 @@ require("packline").setup({
   },
 })
 
-require("packline").add({
+require("pakku").add({
   -- eager: loaded at startup
   { src = "https://github.com/echasnovski/mini.icons", opts = {} },
 
@@ -102,16 +102,16 @@ Superset of `vim.pack`'s spec:
 
 | Command | Description |
 |---------|-------------|
-| `:Packline status`           | List installed plugins + active/pending state. |
-| `:Packline update [name]`    | Forward to `vim.pack.update`. |
-| `:Packline clean <name>`     | Forward to `vim.pack.del`. |
-| `:Packline scan [name]`      | Run aegis-cli over one or all plugins. |
+| `:Pakku status`           | List installed plugins + active/pending state. |
+| `:Pakku update [name]`    | Forward to `vim.pack.update`. |
+| `:Pakku clean <name>`     | Forward to `vim.pack.del`. |
+| `:Pakku scan [name]`      | Run aegis-cli over one or all plugins. |
 
-`:checkhealth packline` reports environment.
+`:checkhealth pakku` reports environment.
 
 ## Security model
 
-packline enforces three policies *before* `vim.pack.add()` ever runs:
+pakku enforces three policies *before* `vim.pack.add()` ever runs:
 
 1. **Host allowlist** — `src` host must be in `security.allowlist`. Default list
    covers the four major forges; empty list disables the check.
@@ -126,13 +126,13 @@ filesystem activity.
 
 ## Scanner
 
-When `scanner.enabled = true`, packline runs two aegis-cli subcommands per
+When `scanner.enabled = true`, pakku runs two aegis-cli subcommands per
 install/update event:
 
 1. `aegis actions scan <path>` — flags malicious GitHub Actions workflows
    shipped inside the plugin repo.
 2. `aegis sbom --local <path>` — emits a CycloneDX SBOM to
-   `stdpath('state')/packline/scans/<name>.cdx.json`. Plugins that bundle
+   `stdpath('state')/pakku/scans/<name>.cdx.json`. Plugins that bundle
    manifest-bearing deps (e.g. `go.nvim` has `go.mod`, `blink.cmp` has Cargo
    workspaces) get real CVE coverage via aegis's lockfile parsers.
 
@@ -140,7 +140,7 @@ install/update event:
 
 aegis-cli does **not** AST-scan Lua. Pure-Lua plugins get an SBOM with no
 dependency rows and no capability findings. **Review Lua plugin source
-yourself.** packline's scanner catches:
+yourself.** pakku's scanner catches:
 
 - malicious GH Actions workflows in any plugin repo;
 - vulnerable transitive deps in plugins that ship a `Cargo.lock`, `go.sum`,
@@ -150,7 +150,7 @@ It does not catch a backdoored `lua/foo.lua`. No tool advertised here does.
 
 ## Lockfile
 
-packline does not write a lockfile. `vim.pack` writes
+pakku does not write a lockfile. `vim.pack` writes
 `$XDG_CONFIG_HOME/nvim/nvim-pack-lock.json`. Commit it to your dotfiles.
 
 ## License

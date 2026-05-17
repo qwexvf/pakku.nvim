@@ -17,7 +17,7 @@ local function notify_findings(name, label, res)
   local lvl = vim.log.levels.INFO
   if res.code == 1 then lvl = vim.log.levels.WARN
   elseif res.code >= 2 then lvl = vim.log.levels.ERROR end
-  local msg = ("packline scan[%s] %s: exit=%d"):format(name, label, res.code)
+  local msg = ("pakku scan[%s] %s: exit=%d"):format(name, label, res.code)
   if res.stderr and #res.stderr > 0 and res.code ~= 0 then
     msg = msg .. "\n" .. res.stderr
   end
@@ -49,10 +49,10 @@ function M.scan_one(plugin, opts)
   opts = opts or {}
   local bin = opts.bin or "aegis"
   if not have_bin(bin) then
-    vim.notify(("packline: aegis binary `%s` not on PATH, skipping scan"):format(bin), vim.log.levels.WARN)
+    vim.notify(("pakku: aegis binary `%s` not on PATH, skipping scan"):format(bin), vim.log.levels.WARN)
     return
   end
-  local report_dir = opts.report_dir or vim.fs.joinpath(vim.fn.stdpath("state"), "packline", "scans")
+  local report_dir = opts.report_dir or vim.fs.joinpath(vim.fn.stdpath("state"), "pakku", "scans")
   if opts.actions ~= false then
     run_actions(bin, plugin.path, plugin.name, opts.fail_on)
   end
@@ -66,7 +66,7 @@ function M.scan_all(opts)
   opts = opts or {}
   local ok, plugins = pcall(vim.pack.get)
   if not ok then
-    vim.notify("packline: vim.pack.get() failed", vim.log.levels.ERROR)
+    vim.notify("pakku: vim.pack.get() failed", vim.log.levels.ERROR)
     return
   end
   for _, p in ipairs(plugins) do

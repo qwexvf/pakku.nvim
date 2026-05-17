@@ -1,13 +1,13 @@
 -- PackChanged-driven build runner
 local M = {}
 
-local loader = require("packline.loader")
+local loader = require("pakku.loader")
 
 local function run_shell(cmd, cwd, name)
   local res = vim.system({ "sh", "-c", cmd }, { cwd = cwd, text = true }):wait()
   if res.code ~= 0 then
     vim.notify(
-      ("packline: build failed for %s (exit %d)\n%s"):format(name, res.code, res.stderr or ""),
+      ("pakku: build failed for %s (exit %d)\n%s"):format(name, res.code, res.stderr or ""),
       vim.log.levels.ERROR
     )
   end
@@ -18,7 +18,7 @@ local function run_build(spec, path)
   if type(b) == "function" then
     local ok, err = pcall(b, { path = path, spec = spec })
     if not ok then
-      vim.notify(("packline: build fn error for %s: %s"):format(spec.name, err), vim.log.levels.ERROR)
+      vim.notify(("pakku: build fn error for %s: %s"):format(spec.name, err), vim.log.levels.ERROR)
     end
     return
   end
@@ -26,7 +26,7 @@ local function run_build(spec, path)
   if b:sub(1, 1) == ":" then
     local ok, err = pcall(vim.cmd, b:sub(2))
     if not ok then
-      vim.notify(("packline: build ex-cmd error for %s: %s"):format(spec.name, err), vim.log.levels.ERROR)
+      vim.notify(("pakku: build ex-cmd error for %s: %s"):format(spec.name, err), vim.log.levels.ERROR)
     end
   else
     run_shell(b, path, spec.name)
@@ -35,7 +35,7 @@ end
 
 function M.attach(config)
   vim.api.nvim_create_autocmd("PackChanged", {
-    group = vim.api.nvim_create_augroup("packline.build", { clear = true }),
+    group = vim.api.nvim_create_augroup("pakku.build", { clear = true }),
     callback = function(args)
       local d = args.data
       if not d or (d.kind ~= "install" and d.kind ~= "update") then return end
@@ -50,7 +50,7 @@ function M.attach(config)
         local matches = false
         for _, k in ipairs(on) do if k == d.kind then matches = true; break end end
         if matches then
-          require("packline.scanner").scan_one({ name = name, path = d.path }, config.scanner)
+          require("pakku.scanner").scan_one({ name = name, path = d.path }, config.scanner)
         end
       end
     end,

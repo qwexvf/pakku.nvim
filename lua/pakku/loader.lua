@@ -5,21 +5,21 @@ M.pending = {}  -- name -> lazy_spec (awaiting trigger)
 M.active = {}   -- name -> true (loaded + configured)
 M.by_name = {}  -- name -> lazy_spec (all specs, for build hook lookup)
 
-local group = vim.api.nvim_create_augroup("packline.loader", { clear = true })
+local group = vim.api.nvim_create_augroup("pakku.loader", { clear = true })
 
 local function call_setup(spec)
   local ok_mod, mod = pcall(require, spec.modname)
   if not ok_mod then
-    vim.notify(("packline: require('%s') failed for %s"):format(spec.modname, spec.name), vim.log.levels.WARN)
+    vim.notify(("pakku: require('%s') failed for %s"):format(spec.modname, spec.name), vim.log.levels.WARN)
     return
   end
   if type(mod.setup) ~= "function" then
-    vim.notify(("packline: %s has no setup(); pass `config` instead of `opts`"):format(spec.modname), vim.log.levels.WARN)
+    vim.notify(("pakku: %s has no setup(); pass `config` instead of `opts`"):format(spec.modname), vim.log.levels.WARN)
     return
   end
   local ok, err = pcall(mod.setup, spec.opts)
   if not ok then
-    vim.notify(("packline: %s setup error: %s"):format(spec.name, err), vim.log.levels.ERROR)
+    vim.notify(("pakku: %s setup error: %s"):format(spec.name, err), vim.log.levels.ERROR)
   end
 end
 
@@ -27,7 +27,7 @@ local function apply_config(spec)
   if spec.config then
     local ok, err = pcall(spec.config)
     if not ok then
-      vim.notify(("packline: %s config error: %s"):format(spec.name, err), vim.log.levels.ERROR)
+      vim.notify(("pakku: %s config error: %s"):format(spec.name, err), vim.log.levels.ERROR)
     end
   elseif spec.opts ~= nil then
     call_setup(spec)
@@ -43,7 +43,7 @@ function M.load(name)
 
   local ok, err = pcall(vim.cmd, "packadd " .. name)
   if not ok then
-    vim.notify(("packline: packadd %s failed: %s"):format(name, err), vim.log.levels.ERROR)
+    vim.notify(("pakku: packadd %s failed: %s"):format(name, err), vim.log.levels.ERROR)
     return
   end
 

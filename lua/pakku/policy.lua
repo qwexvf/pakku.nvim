@@ -50,10 +50,10 @@ function M.filter(entries, cfg)
   for _, entry in ipairs(entries) do
     local ok, reason = M.check(entry.pack, cfg)
     if not ok then
-      vim.notify("packline policy: rejected " .. (reason or "?"), vim.log.levels.ERROR)
+      vim.notify("pakku policy: rejected " .. (reason or "?"), vim.log.levels.ERROR)
     else
       if reason then
-        vim.notify("packline policy: " .. reason, vim.log.levels.WARN)
+        vim.notify("pakku policy: " .. reason, vim.log.levels.WARN)
       end
       table.insert(kept, entry)
     end
