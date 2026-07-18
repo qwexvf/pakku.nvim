@@ -32,6 +32,9 @@ local function modname_candidates(spec)
   return list
 end
 
+-- forward declarations (defined below, referenced by M.load/M.apply above them)
+local normalize_keys, install_keys
+
 local function apply_config(spec)
   if spec.config then
     local ok, e = pcall(spec.config)
@@ -63,6 +66,7 @@ function M.load(name)
   local ok, e = pcall(vim.cmd, "packadd " .. name)
   if not ok then return err("packadd %s failed: %s", name, e) end
   apply_config(spec)
+  install_keys(spec)
   M.times[name] = { ms = elapsed_ms(t0), kind = "lazy" }
 end
 
@@ -70,6 +74,7 @@ function M.apply(spec) -- eager: vim.pack already packadd'd; just config
   M.active[spec.name] = true
   local t0 = _hrtime()
   apply_config(spec)
+  install_keys(spec)
   M.times[spec.name] = { ms = elapsed_ms(t0), kind = "eager" }
 end
 
@@ -84,11 +89,12 @@ local function on_event(name, events, pattern, ev)
   })
 end
 
--- Normalize lazy.nvim-style `keys` field into list of { lhs, modes }.
+-- Normalize lazy.nvim-style `keys` field into list of { lhs, modes, rhs, opts }.
 -- Accepts:  "<leader>x"
 --           { "<leader>x", "<leader>y" }
---           { { "<leader>x", mode = "n", desc = "..." }, ... }
-local function normalize_keys(keys)
+--           { { "<leader>x", function() ... end, mode = "n", desc = "..." }, ... }
+--           { { "<leader>x", "<cmd>Foo<cr>", desc = "..." }, ... }
+function normalize_keys(keys)
   if type(keys) == "string" then return { { lhs = keys, modes = { "n" } } } end
   if type(keys) ~= "table" then return {} end
   local out = {}
@@ -104,11 +110,35 @@ local function normalize_keys(keys)
         elseif type(m) == "string" then
           m = { m }
         end
-        table.insert(out, { lhs = lhs, modes = m })
+        -- rhs is the second positional element (fn or string). The rest of
+        -- the table's string keys become keymap opts (desc, silent, expr, ...).
+        local rhs = k.rhs or k[2]
+        local opts = {}
+        for key, val in pairs(k) do
+          if type(key) == "string" and key ~= "lhs" and key ~= "rhs" and key ~= "mode" and key ~= "ft" then
+            opts[key] = val
+          end
+        end
+        table.insert(out, { lhs = lhs, modes = m, rhs = rhs, opts = opts })
       end
     end
   end
   return out
+end
+
+-- Install the real keymaps a `keys` spec declares (rhs + opts). Called after
+-- the plugin is loaded so the mapping the user actually pressed does its job.
+-- Entries without an rhs are pure lazy-triggers and carry no real mapping.
+function install_keys(spec)
+  if not spec.keys then return end
+  for _, k in ipairs(normalize_keys(spec.keys)) do
+    if k.rhs ~= nil then
+      local opts = vim.tbl_extend("keep", k.opts or {}, { silent = true })
+      for _, mode in ipairs(k.modes) do
+        vim.keymap.set(mode, k.lhs, k.rhs, opts)
+      end
+    end
+  end
 end
 
 function M.register(spec)
